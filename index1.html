@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Universal Multi-Company Business & Activity Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+    
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        // TODO: Replace with your actual Firebase project configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyCuDLY1mBtvaG0vIz6AJNBNOesAg66nlHI",
+            authDomain: "ibtracker-84c57.firebaseapp.com",
+            projectId: "ibtracker-84c57",
+            storageBucket: "ibtracker-84c57.firebasestorage.app",
+            messagingSenderId: "765743778554",
+            appId: "1:765743778554:web:ae5bab4a7105def74fd743",
+            measurementId: "G-TYWEXKH79S"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const googleProvider = new GoogleAuthProvider();
+
+        let currentUser = null;
+        let activeCompanyId = null;
+        let accounts = {};
+        let clientChartInstance = null;
+        let projectChartInstance = null;
+
+        const INDUSTRY_PRESETS = {
+            "Software Development": {
+                clients: [
+                    { name: "SaaS Venture Inc", currency: "$", rate: 150 },
+                    { name: "Fintech Europe Ltd", currency: "€", rate: 135 }
+                ],
+                projects: [
+                    { name: "Cloud Microservices API Development", desc: "RESTful architecture" },
+                    { name: "E-Commerce Mobile Application", desc: "iOS & Android app" }
+                ],
+                tasks: [
+                    { projIdx: 0, name: "Database Schema Design & Migration Scripts", estHours: 12 },
+                    { projIdx: 1, name: "Stripe & PayPal Payment Gateway Integration", estHours: 14 }
+                ],
+                catalog: [{ name: "API Module Integration", hours: 16 }]
+            },
+            "Graphic & UI/UX Design": {
+                clients: [{ name: "Vogue Media Agency", currency: "$", rate: 125 }],
+                projects: [{ name: "Brand Identity & Design System", desc: "Logo & typography" }],
+                tasks: [{ projIdx: 0, name: "High-Fidelity UI Screens & Interactive Prototype", estHours: 24 }],
+                catalog: [{ name: "Logo Design Package", hours: 20 }]
+            },
+            "General Freelance / Other": {
+                clients: [{ name: "Global Client", currency: "$", rate: 100 }],
+                projects: [{ name: "Professional Consulting & Execution", desc: "Client key deliverables" }],
+                tasks: [{ projIdx: 0, name: "Client Discovery & Requirements Gathering", estHours: 8 }],
+                catalog: [{ name: "Client Requirements Discovery", hours: 8 }]
+            }
+        };
+
+        window.switchAuthTab = function(tab) {
+            document.getElementById('login-form').classList.toggle('hidden', tab !== 'login');
+            document.getElementById('signup-form').classList.toggle('hidden', tab !== 'signup');
+            document.getElementById('auth-tab-login').className = tab === 'login' ? "font-bold text-sm text-blue-600 border-b-2 border-blue-600 pb-1" : "font-bold text-sm text-gray-500 pb-1";
+            document.getElementById('auth-tab-signup').className = tab === 'signup' ? "font-bold text-sm text-green-600 border-b-2 border-green-600 pb-1" : "font-bold text-sm text-gray-500 pb-1";
+        };
+
+        window.handleLoginSubmit = async function(e) {
+            e.preventDefault();
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+            try {
+                await signInWithEmailAndPassword(auth, email, password);
+                document.getElementById('user-auth-modal').classList.add('hidden');
+            } catch (err) {
+                alert('Login failed: ' + err.message);
+            }
+        };
+
+        window.handleSignupSubmit = async function(e) {
+            e.preventDefault();
+            const email = document.getElementById('signup-email').value;
+            const password = document.getElementById('signup-password').value;
+            const confirmPassword = document.getElementById('signup-password-confirm').value;
+
+            if (password !== confirmPassword) return alert('Passwords do not match.');
+            try {
+                await createUserWithEmailAndPassword(auth, email, password);
+                document.getElementById('user-auth-modal').classList.add('hidden');
+            } catch (err) {
+                alert('Signup failed: ' + err.message);
+            }
+        };
+
+        window.handleGoogleSignIn = async function() {
+            try {
+                await signInWithPopup(auth, googleProvider);
+                document.getElementById('user-auth-modal').classList.add('hidden');
+            } catch (err) {
+                alert('Google Sign-In failed: ' + err.message);
+            }
+        };
+
+        window.handleLogout = async function() {
+            await signOut(auth);
+            location.reload();
+        };
+
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                currentUser = user;
+                document.getElementById('user-auth-modal').classList.add('hidden');
+                document.getElementById('logged-user-display').innerText = `👤 ${user.email}`;
+                
+                const userDocRef = doc(db, "users", user.uid);
+                const userSnap = await getDoc(userDocRef);
+                if (userSnap.exists()) {
+                    accounts = userSnap.data().accounts || {};
+                    activeCompanyId = userSnap.data().activeCompanyId || null;
+                }
+                checkCompanySetup();
+            } else {
+                currentUser = null;
+                document.getElementById('user-auth-modal').classList.remove('hidden');
+            }
+        });
+
+        async function syncToCloud() {
+            if (!currentUser) return;
+            const userDocRef = doc(db, "users", currentUser.uid);
+            await setDoc(userDocRef, { accounts, activeCompanyId }, { merge: true });
+        }
+
+        window.saveAccounts = function() {
+            syncToCloud();
+            initApp();
+        };
+
+        window.closeRegistrationModal = function() {
+            document.getElementById('auth-modal').classList.add('hidden');
+            if (!activeCompanyId) handleLogout();
+        };
+
+        function checkCompanySetup() {
+            const userCompanies = Object.keys(accounts);
+            if (userCompanies.length === 0) {
+                document.getElementById('auth-modal').classList.remove('hidden');
+            } else {
+                if (!activeCompanyId || !accounts[activeCompanyId]) {
+                    activeCompanyId = userCompanies[0];
+                }
+                initApp();
+            }
+        }
+
+        window.openRegistrationModal = function() {
+            document.getElementById('auth-modal').classList.remove('hidden');
+            const compSelect = document.getElementById('existing-companies-select');
+            const userCompanies = Object.keys(accounts);
+            if (userCompanies.length > 0) {
+                document.getElementById('switch-company-container').classList.remove('hidden');
+                compSelect.innerHTML = `<option value="">Select Existing Company Account...</option>` +
+                    userCompanies.map(k => `<option value="${k}" ${k === activeCompanyId ? 'selected' : ''}>${accounts[k].company} (${accounts[k].industry})</option>`).join('');
+            }
+        };
+
+        window.handleRegistration = function(e) {
+            e.preventDefault();
+            const companyName = document.getElementById('reg-company-name').value.trim();
+            const industry = document.getElementById('reg-industry').value;
+            const currency = document.getElementById('reg-currency-select').value;
+            const defaultRate = parseFloat(document.getElementById('reg-rate').value) || 120;
+
+            const newId = 'comp_' + Date.now();
+            const preset = INDUSTRY_PRESETS[industry] || INDUSTRY_PRESETS["General Freelance / Other"];
+
+            accounts[newId] = {
+                id: newId,
+                company: companyName,
+                industry: industry,
+                currency: currency,
+                clients: preset.clients.map((c, i) => ({ id: `c_${newId}_${i}`, ...c })),
+                projects: preset.projects.map((p, i) => ({ id: `p_${newId}_${i}`, clientId: `c_${newId}_0`, ...p })),
+                tasks: preset.tasks.map((t, i) => ({ id: `t_${newId}_${i}`, projectId: `p_${newId}_0`, ...t })),
+                catalog: [...preset.catalog],
+                timeLogs: [],
+                invoices: []
+            };
+
+            activeCompanyId = newId;
+            document.getElementById('auth-modal').classList.add('hidden');
+            window.saveAccounts();
+        };
+
+        window.switchCompanyAccount = function(compId) {
+            if (!compId) return;
+            activeCompanyId = compId;
+            document.getElementById('auth-modal').classList.add('hidden');
+            window.saveAccounts();
+        };
+
+        window.getActiveAccount = function() {
+            if (!activeCompanyId || !accounts[activeCompanyId]) return null;
+            return accounts[activeCompanyId];
+        };
+
+        window.switchTab = function(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.tab-btn').forEach(el => {
+                el.classList.remove('bg-white', 'text-slate-900');
+                el.classList.add('text-slate-300');
+            });
+            document.getElementById('tab-' + tabId).classList.remove('hidden');
+            event.currentTarget.classList.add('bg-white', 'text-slate-900');
+            event.currentTarget.classList.remove('text-slate-300');
+        };
+
+        window.initApp = function() {
+            const acc = getActiveAccount();
+            if (!acc) return;
+            document.getElementById('app-brand-title').innerText = acc.company;
+            document.getElementById('app-brand-subtitle').innerText = `${acc.industry} Tracker (${acc.currency})`;
+
+            renderClientDropdowns();
+            renderDashboard();
+            renderTimeLogs();
+            renderProjectsAndTasks();
+            renderClients();
+            renderInvoices();
+            renderCatalog();
+        };
+
+        function renderClientDropdowns() {
+            const acc = getActiveAccount();
+            if (!acc) return;
+            const clientOpts = acc.clients.map(c => `<option value="${c.id}">${c.name} (${c.currency || acc.currency})</option>`).join('');
+            document.getElementById('log-client').innerHTML = clientOpts;
+            document.getElementById('proj-client').innerHTML = clientOpts;
+            document.getElementById('inv-client').innerHTML = `<option value="">Select Client...</option>` + clientOpts;
+            onClientChange();
+        }
+
+        window.onClientChange = function() {
+            const acc = getActiveAccount();
+            if (!acc) return;
+            const selectedClientId = document.getElementById('log-client').value;
+            const filteredProjects = acc.projects.filter(p => p.clientId === selectedClientId);
+            const projSelect = document.getElementById('log-project');
+            
+            if (filteredProjects.length === 0) {
+                projSelect.innerHTML = `<option value="">No projects found for client</option>`;
+                document.getElementById('log-task').innerHTML = `<option value="">No tasks available</option>`;
+            } else {
+                projSelect.innerHTML = filteredProjects.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+                onProjectChange();
+            }
+            document.getElementById('task-project').innerHTML = acc.projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+            const client = acc.clients.find(c => c.id === selectedClientId);
+            if (client) {
+                document.getElementById('log-rate').value = client.rate;
+                document.getElementById('log-currency-symbol').innerText = client.currency || acc.currency;
+            }
+        };
+
+        window.onProjectChange = function() {
+            const acc = getActiveAccount();
+            if (!acc) return;
+            const selectedProjId = document.getElementById('log-project').value;
+            const filteredTasks = acc.tasks.filter(t => t.projectId === selectedProjId);
+            const taskSelect = document.getElementById('log-task');
+            taskSelect.innerHTML = filteredTasks.length === 0 ? `<option value="">No tasks for this project</option>` : filteredTasks.map(t => `<option value="${t.id}">${t.name} (${t.estHours} hrs)</option>`).join('');
+        };
+
+        window.handleLogTime = function(e) {
+            e.preventDefault();
+            const acc = getActiveAccount();
+            if (!acc) return;
+            acc.timeLogs.push({
+                id: 'log_' + Date.now(),
+                date: new Date().toISOString().split('T')[0],
+                clientId: document.getElementById('log-client').value,
+                projectId: document.getElementById('log-project').value,
+                taskId: document.getElementById('log-task').value,
+                hours: parseFloat(document.getElementById('log-hours').value),
+                rate: parseFloat(document.getElementById('log-rate').value),
+                billable: document.getElementById('log-billable').checked,
+                notes: document.getElementById('log-notes').value,
+                invoiced: false
+            });
+            document.getElementById('log-hours').value = '';
+            document.getElementById('log-notes').value = '';
+            window.saveAccounts();
+        };
+
+        function renderTimeLogs() {
+            const acc = getActiveAccount();
+            const tbody = document.getElementById('time-logs-table');
+            if (!acc || acc.timeLogs.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">No time entries logged yet.</td></tr>`;
+                return;
+            }
+            tbody.innerHTML = acc.timeLogs.map(l => {
+                const client = acc.clients.find(c => c.id === l.clientId);
+                const task = acc.tasks.find(t => t.id === l.taskId)?.name || 'General Task';
+                return `<tr><td class="px-6 py-4">${l.date}</td><td class="px-6 py-4 font-medium">${client?.name || 'Unknown'}</td><td class="px-6 py-4">${task}</td><td class="px-6 py-4">${l.hours} hrs</td><td class="px-6 py-4">${l.billable ? 'Yes' : 'No'}</td><td class="px-6 py-4"><button onclick="deleteLog('${l.id}')" class="text-red-600">Delete</button></td></tr>`;
+            }).join('');
+        }
+
+        window.deleteLog = function(id) {
+            const acc = getActiveAccount();
+            if (!acc) return;
+            acc.timeLogs = acc.timeLogs.filter(l => l.id !== id);
+            window.saveAccounts();
+        };
+
+        function renderProjectsAndTasks() {
+            const acc = getActiveAccount();
+            if (!acc) return;
+            document.getElementById('projects-list').innerHTML = acc.projects.map(p => `<li><strong>${p.name}</strong></li>`).join('');
+            document.getElementById('tasks-list').innerHTML = acc.tasks.map(t => `<li><strong>${t.name}</strong></li>`).join('');
+        }
+
+        function renderClients() {
+            const acc = getActiveAccount();
+            if (!acc) return;
+            document.getElementById('clients-grid').innerHTML = acc.clients.map(c => `<div class="border rounded p-4 bg-gray-50"><h4 class="font-bold">${c.name}</h4><p class="text-sm">Rate: ${c.currency || acc.currency}${c.rate}/hr</p></div>`).join('');
+        }
+
+        window.loadUnbilledEntries = function() {
+            const acc = getActiveAccount();
+            if (!acc) return;
+            const clientId = document.getElementById('inv-client').value;
+            const container = document.getElementById('unbilled-container');
+            const unbilled = acc.timeLogs.filter(l => l.clientId === clientId && l.billable && !l.invoiced);
+            container.innerHTML = unbilled.length === 0 ? `<p class="text-gray-500">No unbilled time entries found.</p>` : unbilled.map(l => `<label class="flex items-center space-x-2"><input type="checkbox" value="${l.id}" checked class="inv-checkbox"><span>${l.date} - ${l.hours} hrs</span></label>`).join('');
+        };
+
+        window.generateInvoice = function() {
+            const acc = getActiveAccount();
+            if (!acc) return;
+            const clientId = document.getElementById('inv-client').value;
+            const selectedIds = Array.from(document.querySelectorAll('.inv-checkbox:checked')).map(cb => cb.value);
+            if (!clientId || selectedIds.length === 0) return alert('Select client and items.');
+            
+            const entries = acc.timeLogs.filter(l => selectedIds.includes(l.id));
+            const total = entries.reduce((sum, curr) => sum + (curr.hours * curr.rate), 0);
+            acc.invoices.push({ id: 'INV-' + Math.floor(1000 + Math.random() * 9000), clientId, entries: selectedIds, total, date: new Date().toISOString().split('T')[0] });
+            acc.timeLogs.forEach(l => { if (selectedIds.includes(l.id)) l.invoiced = true; });
+            window.saveAccounts();
+            alert('Invoice generated!');
+        };
+
+        function renderInvoices() {
+            const acc = getActiveAccount();
+            const container = document.getElementById('invoices-list');
+            if (!acc || acc.invoices.length === 0) { container.innerHTML = `<p class="text-gray-500 text-sm">No invoices yet.</p>`; return; }
+            container.innerHTML = acc.invoices.map(inv => `<div class="border p-3 rounded flex justify-between"><span><strong>${inv.id}</strong> - Total: $${inv.total.toFixed(2)}</span></div>`).join('');
+        }
+
+        function renderCatalog() {
+            const acc = getActiveAccount();
+            if (!acc) return;
+            document.getElementById('catalog-list').innerHTML = acc.catalog.map(item => `<li class="py-1 flex justify-between"><span>${item.name}</span><span>~${item.hours} hrs</span></li>`).join('');
+        }
+
+        function renderDashboard() {
+            const acc = getActiveAccount();
+            if (!acc) return;
+            const totalHours = acc.timeLogs.reduce((sum, curr) => sum + curr.hours, 0);
+            const totalBillable = acc.timeLogs.filter(l => l.billable).reduce((sum, curr) => sum + (curr.hours * curr.rate), 0);
+            document.getElementById('stat-total-hours').innerText = totalHours.toFixed(1);
+            document.getElementById('stat-total-billable').innerText = acc.currency + totalBillable.toFixed(2);
+            document.getElementById('stat-active-clients').innerText = acc.clients.length;
+
+            if (clientChartInstance) clientChartInstance.destroy();
+            clientChartInstance = new Chart(document.getElementById('chartClientHours').getContext('2d'), {
+                type: 'bar',
+                data: { labels: acc.clients.map(c => c.name), datasets: [{ label: 'Hours', data: acc.clients.map(c => acc.timeLogs.filter(l => l.clientId === c.id).reduce((s, b) => s + b.hours, 0)), backgroundColor: '#3b82f6' }] }
+            });
+        }
+    </script>
+</head>
+<body class="bg-gray-100 text-gray-900 font-sans">
+    <!-- AUTH MODAL -->
+    <div id="user-auth-modal" class="fixed inset-0 bg-slate-900 bg-opacity-95 flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 space-y-4">
+            <div class="flex justify-around border-b pb-3">
+                <button id="auth-tab-login" onclick="switchAuthTab('login')" class="font-bold text-sm text-blue-600 border-b-2 border-blue-600 pb-1">Sign In</button>
+                <button id="auth-tab-signup" onclick="switchAuthTab('signup')" class="font-bold text-sm text-gray-500 pb-1">Sign Up</button>
+            </div>
+            <button onclick="handleGoogleSignIn()" class="w-full border border-gray-300 hover:bg-gray-50 text-slate-700 font-semibold py-2.5 px-4 rounded-md text-sm flex items-center justify-center space-x-2">
+                <span>Continue with Google</span>
+            </button>
+            <form id="login-form" onsubmit="handleLoginSubmit(event)" class="space-y-3">
+                <input type="email" id="login-email" required placeholder="Email" class="w-full border rounded p-2 text-sm">
+                <input type="password" id="login-password" required placeholder="Password" class="w-full border rounded p-2 text-sm">
+                <button type="submit" class="w-full bg-blue-600 text-white p-2 rounded text-sm font-semibold">Sign In</button>
+            </form>
+            <form id="signup-form" onsubmit="handleSignupSubmit(event)" class="space-y-3 hidden">
+                <input type="email" id="signup-email" required placeholder="Email" class="w-full border rounded p-2 text-sm">
+                <input type="password" id="signup-password" required placeholder="Password" class="w-full border rounded p-2 text-sm">
+                <input type="password" id="signup-password-confirm" required placeholder="Confirm Password" class="w-full border rounded p-2 text-sm">
+                <button type="submit" class="w-full bg-green-600 text-white p-2 rounded text-sm font-semibold">Register Account</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- COMPANY REGISTRATION MODAL -->
+    <div id="auth-modal" class="fixed inset-0 bg-slate-900 bg-opacity-95 flex items-center justify-center p-4 z-50 hidden">
+        <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full p-6 space-y-4 relative">
+            <button onclick="closeRegistrationModal()" class="absolute top-4 left-4 text-xs font-semibold text-gray-500">← Back</button>
+            <h2 class="text-xl font-bold text-center pt-2">Register Company Workspace</h2>
+            <form onsubmit="handleRegistration(event)" class="space-y-3">
+                <input type="text" id="reg-company-name" required placeholder="Company Name" class="w-full border rounded p-2 text-sm">
+                <select id="reg-industry" class="w-full border rounded p-2 text-sm">
+                    <option value="Software Development">Software Development</option>
+                    <option value="Graphic & UI/UX Design">Graphic & UI/UX Design</option>
+                    <option value="General Freelance / Other">General Freelance / Other</option>
+                </select>
+                <select id="reg-currency-select" class="w-full border rounded p-2 text-sm">
+                    <option value="$">USD ($)</option>
+                    <option value="€">EUR (€)</option>
+                    <option value="₹">INR (₹)</option>
+                </select>
+                <input type="number" id="reg-rate" value="120" class="w-full border rounded p-2 text-sm">
+                <button type="submit" class="w-full bg-blue-600 text-white p-2 rounded text-sm font-semibold">Create Workspace</button>
+            </form>
+            <div id="switch-company-container" class="hidden border-t pt-2 text-center">
+                <select id="existing-companies-select" onchange="switchCompanyAccount(this.value)" class="w-full border rounded p-2 text-xs"></select>
+            </div>
+        </div>
+    </div>
+
+    <!-- APP SHELL -->
+    <div class="min-h-screen flex flex-col">
+        <header class="bg-slate-900 text-white shadow">
+            <div class="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+                <div>
+                    <h1 id="app-brand-title" class="text-xl font-bold">Business Activity Tracker</h1>
+                    <p id="app-brand-subtitle" class="text-xs text-slate-400">Cloud Synced PWA</p>
+                </div>
+                <div class="flex items-center space-x-3">
+                    <span id="logged-user-display" class="text-xs text-slate-300"></span>
+                    <button onclick="openRegistrationModal()" class="bg-slate-800 text-xs px-3 py-1.5 rounded border border-slate-700">🏢 Switch Company</button>
+                    <button onclick="handleLogout()" class="bg-red-800 text-xs px-3 py-1.5 rounded">Logout</button>
+                </div>
+            </div>
+            <div class="max-w-7xl mx-auto px-4 flex space-x-1 overflow-x-auto bg-slate-950 py-1">
+                <button onclick="switchTab('dashboard')" class="tab-btn px-4 py-2 rounded-t font-medium text-sm bg-white text-slate-900">Dashboard</button>
+                <button onclick="switchTab('log-time')" class="tab-btn px-4 py-2 rounded-t font-medium text-sm text-slate-300">Log Time</button>
+                <button onclick="switchTab('projects')" class="tab-btn px-4 py-2 rounded-t font-medium text-sm text-slate-300">Projects</button>
+                <button onclick="switchTab('clients')" class="tab-btn px-4 py-2 rounded-t font-medium text-sm text-slate-300">Clients</button>
+                <button onclick="switchTab('invoices')" class="tab-btn px-4 py-2 rounded-t font-medium text-sm text-slate-300">Invoices</button>
+                <button onclick="switchTab('catalog')" class="tab-btn px-4 py-2 rounded-t font-medium text-sm text-slate-300">Catalog</button>
+            </div>
+        </header>
+
+        <main class="max-w-7xl mx-auto px-4 py-6 flex-grow w-full space-y-6">
+            <!-- DASHBOARD -->
+            <div id="tab-dashboard" class="tab-content space-y-6">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="bg-white p-4 rounded shadow border-l-4 border-blue-600"><p class="text-sm text-gray-500">Total Hours</p><p id="stat-total-hours" class="text-2xl font-bold">0.0</p></div>
+                    <div class="bg-white p-4 rounded shadow border-l-4 border-green-600"><p class="text-sm text-gray-500">Total Billed</p><p id="stat-total-billable" class="text-2xl font-bold">$0.00</p></div>
+                    <div class="bg-white p-4 rounded shadow border-l-4 border-purple-600"><p class="text-sm text-gray-500">Clients</p><p id="stat-active-clients" class="text-2xl font-bold">0</p></div>
+                </div>
+                <div class="bg-white p-4 rounded shadow"><canvas id="chartClientHours" height="100"></canvas></div>
+            </div>
+
+            <!-- LOG TIME -->
+            <div id="tab-log-time" class="tab-content hidden space-y-6">
+                <div class="bg-white p-6 rounded shadow max-w-2xl">
+                    <h3 class="text-lg font-semibold mb-4">Record Working Hours</h3>
+                    <form onsubmit="handleLogTime(event)" class="space-y-4">
+                        <div class="grid grid-cols-2 gap-4">
+                            <div><label class="block text-sm">Client</label><select id="log-client" onchange="onClientChange()" required class="w-full border rounded p-2 bg-white text-sm"></select></div>
+                            <div><label class="block text-sm">Project</label><select id="log-project" onchange="onProjectChange()" required class="w-full border rounded p-2 bg-white text-sm"></select></div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div><label class="block text-sm">Task</label><select id="log-task" required class="w-full border rounded p-2 bg-white text-sm"></select></div>
+                            <div><label class="block text-sm">Hours</label><input type="number" step="0.25" id="log-hours" required class="w-full border rounded p-2 text-sm"></div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div><label class="block text-sm">Rate (<span id="log-currency-symbol">$</span>)</label><input type="number" id="log-rate" required class="w-full border rounded p-2 text-sm"></div>
+                            <div class="flex items-center pt-5"><label class="flex items-center space-x-2"><input type="checkbox" id="log-billable" checked class="h-4 w-4"><span class="text-sm">Billable</span></label></div>
+                        </div>
+                        <div><label class="block text-sm">Notes</label><textarea id="log-notes" rows="2" class="w-full border rounded p-2 text-sm"></textarea></div>
+                        <button type="submit" class="w-full bg-blue-600 text-white p-2 rounded text-sm font-semibold">Save Time Entry</button>
+                    </form>
+                </div>
+                <div class="bg-white p-6 rounded shadow"><table class="min-w-full text-sm"><tbody id="time-logs-table"></tbody></table></div>
+            </div>
+
+            <!-- PROJECTS -->
+            <div id="tab-projects" class="tab-content hidden space-y-6">
+                <div class="grid grid-cols-2 gap-6 bg-white p-6 rounded shadow">
+                    <div><h3 class="font-semibold mb-2">Projects</h3><ul id="projects-list" class="space-y-1 text-sm"></ul></div>
+                    <div><h3 class="font-semibold mb-2">Tasks</h3><ul id="tasks-list" class="space-y-1 text-sm"></ul></div>
+                </div>
+            </div>
+
+            <!-- CLIENTS -->
+            <div id="tab-clients" class="tab-content hidden space-y-6">
+                <div class="bg-white p-6 rounded shadow"><div id="clients-grid" class="grid grid-cols-3 gap-4"></div></div>
+            </div>
+
+            <!-- INVOICES -->
+            <div id="tab-invoices" class="tab-content hidden space-y-6">
+                <div class="bg-white p-6 rounded shadow max-w-xl space-y-4">
+                    <h3 class="text-lg font-semibold">Generate Invoice</h3>
+                    <select id="inv-client" onchange="loadUnbilledEntries()" class="w-full border rounded p-2 text-sm bg-white"></select>
+                    <div id="unbilled-container" class="border p-3 rounded bg-gray-50 text-sm">Select a client.</div>
+                    <button onclick="generateInvoice()" class="bg-green-600 text-white p-2 rounded text-sm font-semibold">Create Invoice</button>
+                </div>
+                <div class="bg-white p-6 rounded shadow"><div id="invoices-list" class="space-y-2"></div></div>
+            </div>
+
+            <!-- CATALOG -->
+            <div id="tab-catalog" class="tab-content hidden space-y-6">
+                <div class="bg-white p-6 rounded shadow max-w-xl"><ul id="catalog-list" class="divide-y text-sm"></ul></div>
+            </div>
+        </main>
+    </div>
+</body>
+</html>
