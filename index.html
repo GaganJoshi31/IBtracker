@@ -6,702 +6,165 @@
     <title>Universal Multi-Company Business & Activity Tracker</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- SheetJS for handling Excel (.xlsx) files -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
-</head>
-<body class="bg-gray-100 text-gray-900 font-sans">
+    
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-    <!-- USER AUTHENTICATION MODAL (SIGN IN / SIGN UP TABS) -->
-    <div id="user-auth-modal" class="fixed inset-0 bg-slate-900 bg-opacity-95 flex items-center justify-center p-4 z-50">
-        <div class="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden">
-            <!-- Modal Header / Auth Tabs -->
-            <div class="bg-slate-100 p-4 border-b flex justify-around">
-                <button id="auth-tab-login" onclick="switchAuthTab('login')" class="font-bold text-sm text-blue-600 border-b-2 border-blue-600 pb-1">
-                    Sign In
-                </button>
-                <button id="auth-tab-signup" onclick="switchAuthTab('signup')" class="font-bold text-sm text-gray-500 hover:text-gray-800 pb-1">
-                    Create Account (Sign Up)
-                </button>
-            </div>
+        // TODO: Replace with your actual Firebase project configuration from the Firebase Console
+        const firebaseConfig = {
+            apiKey: "AIzaSyCuDLY1mBtvaG0vIz6AJNBNOesAg66nlHI",
+ 	    authDomain: "ibtracker-84c57.firebaseapp.com",
+  	    projectId: "ibtracker-84c57",
+  	    storageBucket: "ibtracker-84c57.firebasestorage.app",
+  	    messagingSenderId: "765743778554",
+  	    appId: "1:765743778554:web:ae5bab4a7105def74fd743",
+  	    measurementId: "G-TYWEXKH79S"
+        };
 
-            <div class="p-6 space-y-4">
-                <!-- LOGIN FORM -->
-                <form id="login-form" onsubmit="handleLoginSubmit(event)" class="space-y-4">
-                    <div class="text-center mb-2">
-                        <h3 class="text-xl font-bold text-slate-800">Welcome Back</h3>
-                        <p class="text-xs text-gray-500">Sign in with your email and password</p>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-semibold uppercase text-gray-600 mb-1">Email Address</label>
-                        <input type="email" id="login-email" required placeholder="name@company.com" class="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-semibold uppercase text-gray-600 mb-1">Password</label>
-                        <input type="password" id="login-password" required placeholder="••••••••" class="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500">
-                    </div>
-                    <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-md text-sm transition">
-                        Sign In
-                    </button>
-                </form>
 
-                <!-- SIGN UP FORM -->
-                <form id="signup-form" onsubmit="handleSignupSubmit(event)" class="space-y-4 hidden">
-                    <div class="text-center mb-2">
-                        <h3 class="text-xl font-bold text-slate-800">Create New Account</h3>
-                        <p class="text-xs text-gray-500">Register a user account to set up your business workspace</p>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-semibold uppercase text-gray-600 mb-1">Email Address</label>
-                        <input type="email" id="signup-email" required placeholder="name@company.com" class="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-semibold uppercase text-gray-600 mb-1">Password</label>
-                        <input type="password" id="signup-password" required placeholder="Minimum 6 characters" class="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-semibold uppercase text-gray-600 mb-1">Confirm Password</label>
-                        <input type="password" id="signup-password-confirm" required placeholder="Repeat password" class="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500">
-                    </div>
-                    <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2.5 rounded-md text-sm transition">
-                        Register Account
-                    </button>
-                </form>
-            </div>
-        </div>
-    </div>
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
 
-    <!-- REGISTRATION / COMPANY SELECTION MODAL -->
-    <div id="auth-modal" class="fixed inset-0 bg-slate-900 bg-opacity-95 flex items-center justify-center p-4 z-50 hidden">
-        <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full p-6 space-y-5">
-            <div class="text-center">
-                <h2 class="text-2xl font-bold text-slate-800">Select or Register Company</h2>
-                <p class="text-xs text-gray-500 mt-1">Initialize your industry-tailored workspace for this user account</p>
-            </div>
-            
-            <form onsubmit="handleRegistration(event)" class="space-y-4">
-                <div>
-                    <label class="block text-xs font-semibold uppercase text-gray-600 mb-1">Company / Biller Name</label>
-                    <input type="text" id="reg-company-name" required placeholder="e.g. Nexus Software Solutions" class="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500">
-                </div>
+        let currentUser = null;
+        let activeCompanyId = null;
+        let accounts = {};
 
-                <div>
-                    <label class="block text-xs font-semibold uppercase text-gray-600 mb-1">Business Industry / Mode of Operation</label>
-                    <select id="reg-industry" required class="w-full border rounded-md p-2 text-sm bg-white font-medium text-slate-800">
-                        <option value="Software Development">Software & App Development</option>
-                        <option value="Graphic & UI/UX Design">Graphic, Web & UI/UX Design</option>
-                        <option value="Digital Marketing">Digital Marketing & Growth Agency</option>
-                        <option value="Legal Services">Legal Services & Corporate Law</option>
-                        <option value="Accounting & Tax">Accounting, Audit & Tax Advisory</option>
-                        <option value="HR & Recruitment">Human Resources & Staffing Agency</option>
-                        <option value="Construction & Architecture">Construction & Architecture Firm</option>
-                        <option value="Management & Strategy">Management & Business Strategy</option>
-                        <option value="SAP Consulting">SAP / Enterprise IT Consulting</option>
-                        <option value="General Freelance / Other">General Consulting & Services</option>
-                    </select>
-                </div>
-
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-xs font-semibold uppercase text-gray-600 mb-1">Base Currency</label>
-                        <select id="reg-currency-select" onchange="toggleCustomCurrencyInput('reg')" class="w-full border rounded-md p-2 text-sm bg-white">
-                            <option value="$">USD ($)</option>
-                            <option value="€">EUR (€)</option>
-                            <option value="£">GBP (£)</option>
-                            <option value="₹">INR (₹)</option>
-                            <option value="A$">AUD (A$)</option>
-                            <option value="C$">CAD (C$)</option>
-                            <option value="¥">JPY / CNY (¥)</option>
-                            <option value="custom">Custom...</option>
-                        </select>
-                        <input type="text" id="reg-currency-custom" placeholder="Type Symbol" class="mt-1 w-full border rounded-md p-1.5 text-sm hidden">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-semibold uppercase text-gray-600 mb-1">Default Hourly Rate</label>
-                        <input type="number" id="reg-rate" required value="120" class="w-full border rounded-md p-2 text-sm">
-                    </div>
-                </div>
-
-                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-md text-sm transition">
-                    Register Company & Auto-Generate Workspace
-                </button>
-            </form>
-
-            <div id="switch-company-container" class="border-t pt-3 hidden text-center">
-                <p class="text-xs text-gray-500 mb-2">Or switch to an existing registered company account:</p>
-                <select id="existing-companies-select" onchange="switchCompanyAccount(this.value)" class="w-full border rounded-md p-2 text-xs bg-gray-50"></select>
-            </div>
-        </div>
-    </div>
-
-    <div class="min-h-screen flex flex-col">
-        <!-- Header -->
-        <header class="bg-slate-900 text-white shadow">
-            <div class="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
-                <div>
-                    <h1 id="app-brand-title" class="text-xl font-bold">Business Activity Tracker</h1>
-                    <p id="app-brand-subtitle" class="text-xs text-slate-400">Universal Multi-Currency Time & Invoicing PWA</p>
-                </div>
-                <div class="flex items-center space-x-3">
-                    <span id="logged-user-display" class="text-xs text-slate-300 font-medium"></span>
-                    <button onclick="openRegistrationModal()" class="bg-slate-800 hover:bg-slate-700 text-xs px-3 py-1.5 rounded border border-slate-700">🏢 Switch / Register Company</button>
-                    <button onclick="handleLogout()" class="bg-red-800 hover:bg-red-700 text-xs px-3 py-1.5 rounded border border-red-700">Logout</button>
-                </div>
-            </div>
-            <!-- Navigation Tabs -->
-            <div class="max-w-7xl mx-auto px-4 flex space-x-1 overflow-x-auto bg-slate-950 py-1">
-                <button onclick="switchTab('dashboard')" class="tab-btn px-4 py-2 rounded-t font-medium text-sm bg-white text-slate-900">Dashboard</button>
-                <button onclick="switchTab('log-time')" class="tab-btn px-4 py-2 rounded-t font-medium text-sm text-slate-300 hover:text-white">Log Time</button>
-                <button onclick="switchTab('projects')" class="tab-btn px-4 py-2 rounded-t font-medium text-sm text-slate-300 hover:text-white">Projects & Tasks</button>
-                <button onclick="switchTab('clients')" class="tab-btn px-4 py-2 rounded-t font-medium text-sm text-slate-300 hover:text-white">Clients & Currencies</button>
-                <button onclick="switchTab('invoices')" class="tab-btn px-4 py-2 rounded-t font-medium text-sm text-slate-300 hover:text-white">Invoices</button>
-                <button onclick="switchTab('catalog')" class="tab-btn px-4 py-2 rounded-t font-medium text-sm text-slate-300 hover:text-white">Activity Catalog</button>
-                <button onclick="switchTab('migrate')" class="tab-btn px-4 py-2 rounded-t font-medium text-sm text-slate-300 hover:text-white">Migrate Data</button>
-            </div>
-        </header>
-
-        <!-- Main Content -->
-        <main class="max-w-7xl mx-auto px-4 py-6 flex-grow w-full space-y-6">
-
-            <!-- DASHBOARD TAB -->
-            <div id="tab-dashboard" class="tab-content space-y-6">
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div class="bg-white p-4 rounded-lg shadow border-l-4 border-blue-600">
-                        <p class="text-sm text-gray-500">Total Hours Logged</p>
-                        <p id="stat-total-hours" class="text-2xl font-bold">0.0</p>
-                    </div>
-                    <div class="bg-white p-4 rounded-lg shadow border-l-4 border-green-600">
-                        <p class="text-sm text-gray-500">Base Currency Billed Total</p>
-                        <p id="stat-total-billable" class="text-2xl font-bold">$0.00</p>
-                    </div>
-                    <div class="bg-white p-4 rounded-lg shadow border-l-4 border-amber-500">
-                        <p class="text-sm text-gray-500">Base Currency Unbilled Total</p>
-                        <p id="stat-unbilled" class="text-2xl font-bold">$0.00</p>
-                    </div>
-                    <div class="bg-white p-4 rounded-lg shadow border-l-4 border-purple-600">
-                        <p class="text-sm text-gray-500">Active Clients</p>
-                        <p id="stat-active-clients" class="text-2xl font-bold">0</p>
-                    </div>
-                </div>
-
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div class="bg-white p-4 rounded-lg shadow">
-                        <h3 class="font-semibold mb-4 text-gray-700">Hours by Client (Graphical)</h3>
-                        <canvas id="chartClientHours" height="220"></canvas>
-                    </div>
-                    <div class="bg-white p-4 rounded-lg shadow">
-                        <h3 class="font-semibold mb-4 text-gray-700">Hours by Project (Graphical)</h3>
-                        <canvas id="chartProjectHours" height="220"></canvas>
-                    </div>
-                </div>
-
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div class="bg-white p-4 rounded-lg shadow">
-                        <h3 class="font-semibold mb-3 text-gray-700">Client Summary (Per Local Currency)</h3>
-                        <div class="overflow-x-auto">
-                            <table class="min-w-full divide-y divide-gray-200 text-sm">
-                                <thead class="bg-gray-50 text-gray-500">
-                                    <tr>
-                                        <th class="px-4 py-2 text-left">Client</th>
-                                        <th class="px-4 py-2 text-left">Total Hours</th>
-                                        <th class="px-4 py-2 text-left">Billable Amount (Client Currency)</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="table-client-summary" class="divide-y divide-gray-200"></tbody>
-                            </table>
-                        </div>
-                    </div>
-                    <div class="bg-white p-4 rounded-lg shadow">
-                        <h3 class="font-semibold mb-3 text-gray-700">Recent Time Entries (Tabular)</h3>
-                        <div class="overflow-x-auto">
-                            <table class="min-w-full divide-y divide-gray-200 text-sm">
-                                <thead class="bg-gray-50 text-gray-500">
-                                    <tr>
-                                        <th class="px-4 py-2 text-left">Date</th>
-                                        <th class="px-4 py-2 text-left">Client</th>
-                                        <th class="px-4 py-2 text-left">Hours</th>
-                                        <th class="px-4 py-2 text-left">Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="table-recent-logs" class="divide-y divide-gray-200"></tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- LOG TIME TAB -->
-            <div id="tab-log-time" class="tab-content hidden space-y-6">
-                <div class="bg-white p-6 rounded-lg shadow max-w-2xl">
-                    <h3 class="text-lg font-semibold mb-4">Record Working Hours</h3>
-                    <form id="time-log-form" onsubmit="handleLogTime(event)" class="space-y-4">
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700">Client</label>
-                                <select id="log-client" onchange="onClientChange()" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2 bg-white"></select>
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700">Project</label>
-                                <select id="log-project" onchange="onProjectChange()" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2 bg-white"></select>
-                            </div>
-                        </div>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700">Task / Activity Type</label>
-                                <select id="log-task" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2 bg-white"></select>
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700">Hours</label>
-                                <input type="number" step="0.25" id="log-hours" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2" placeholder="e.g. 2.5">
-                            </div>
-                        </div>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700">Hourly Rate (<span id="log-currency-symbol">$</span>)</label>
-                                <input type="number" id="log-rate" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2" placeholder="120">
-                            </div>
-                            <div class="flex items-center pt-6">
-                                <label class="flex items-center space-x-2 cursor-pointer">
-                                    <input type="checkbox" id="log-billable" checked class="rounded border-gray-300 text-blue-600 shadow-sm h-4 w-4">
-                                    <span class="text-sm font-medium text-gray-700">Billable to Client</span>
-                                </label>
-                            </div>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700">Activity Detail / Notes</label>
-                            <textarea id="log-notes" rows="2" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2" placeholder="Describe specific work completed..."></textarea>
-                        </div>
-                        <button type="submit" class="w-full bg-blue-600 text-white font-medium py-2 rounded-md hover:bg-blue-700">Save Time Entry</button>
-                    </form>
-                </div>
-
-                <div class="bg-white p-6 rounded-lg shadow">
-                    <h3 class="text-lg font-semibold mb-4">Logged Time Entries</h3>
-                    <div class="overflow-x-auto">
-                        <table class="min-w-full divide-y divide-gray-200">
-                            <thead>
-                                <tr class="bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    <th class="px-6 py-3">Date</th>
-                                    <th class="px-6 py-3">Client</th>
-                                    <th class="px-6 py-3">Project / Task</th>
-                                    <th class="px-6 py-3">Hours</th>
-                                    <th class="px-6 py-3">Billable</th>
-                                    <th class="px-6 py-3">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="time-logs-table" class="bg-white divide-y divide-gray-200 text-sm"></tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-
-            <!-- PROJECTS & TASKS TAB -->
-            <div id="tab-projects" class="tab-content hidden space-y-6">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div class="bg-white p-6 rounded-lg shadow space-y-4">
-                        <h3 class="text-lg font-semibold">Manage Projects</h3>
-                        <form onsubmit="handleAddProject(event)" class="space-y-3">
-                            <input type="text" id="proj-name" placeholder="Project Name" required class="w-full border rounded p-2 text-sm">
-                            <select id="proj-client" required class="w-full border rounded p-2 text-sm bg-white"></select>
-                            <textarea id="proj-desc" placeholder="Project Description" class="w-full border rounded p-2 text-sm"></textarea>
-                            <button type="submit" class="bg-blue-600 text-white text-sm font-medium px-4 py-2 rounded hover:bg-blue-700">Add Project</button>
-                        </form>
-                        <div class="border-t pt-4">
-                            <ul id="projects-list" class="space-y-2 text-sm max-h-60 overflow-y-auto"></ul>
-                        </div>
-                    </div>
-
-                    <div class="bg-white p-6 rounded-lg shadow space-y-4">
-                        <h3 class="text-lg font-semibold">Manage Tasks</h3>
-                        <form onsubmit="handleAddTask(event)" class="space-y-3">
-                            <input type="text" id="task-name" placeholder="Task Name" required class="w-full border rounded p-2 text-sm">
-                            <select id="task-project" required class="w-full border rounded p-2 text-sm bg-white"></select>
-                            <input type="number" step="0.5" id="task-est-hrs" placeholder="Estimated Hours" class="w-full border rounded p-2 text-sm">
-                            <button type="submit" class="bg-blue-600 text-white text-sm font-medium px-4 py-2 rounded hover:bg-blue-700">Add Task</button>
-                        </form>
-                        <div class="border-t pt-4">
-                            <ul id="tasks-list" class="space-y-2 text-sm max-h-60 overflow-y-auto"></ul>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- CLIENTS TAB -->
-            <div id="tab-clients" class="tab-content hidden space-y-6">
-                <div class="bg-white p-6 rounded-lg shadow max-w-xl">
-                    <h3 class="text-lg font-semibold mb-4">Add New Client (Multi-Currency Support)</h3>
-                    <form onsubmit="handleAddClient(event)" class="space-y-4">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700">Client Name</label>
-                            <input type="text" id="client-name" required placeholder="e.g. European Tech Systems" class="mt-1 block w-full rounded border p-2">
-                        </div>
-                        <div class="grid grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700">Select Currency</label>
-                                <select id="client-currency-select" onchange="toggleCustomCurrencyInput('client')" class="mt-1 block w-full rounded border p-2 bg-white">
-                                    <option value="$">USD ($)</option>
-                                    <option value="€">EUR (€)</option>
-                                    <option value="£">GBP (£)</option>
-                                    <option value="₹">INR (₹)</option>
-                                    <option value="A$">AUD (A$)</option>
-                                    <option value="C$">CAD (C$)</option>
-                                    <option value="¥">JPY / CNY (¥)</option>
-                                    <option value="custom">Custom Symbol...</option>
-                                </select>
-                                <input type="text" id="client-currency-custom" placeholder="Type Custom Symbol" class="mt-1 w-full border rounded p-1.5 text-sm hidden">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700">Default Hourly Rate</label>
-                                <input type="number" id="client-rate" required value="120" class="mt-1 block w-full rounded border p-2">
-                            </div>
-                        </div>
-                        <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium">Save Client Profile</button>
-                    </form>
-                </div>
-                <div class="bg-white p-6 rounded-lg shadow">
-                    <h3 class="text-lg font-semibold mb-4">Client Roster & Regional Billing Currencies</h3>
-                    <div id="clients-grid" class="grid grid-cols-1 md:grid-cols-3 gap-4"></div>
-                </div>
-            </div>
-
-            <!-- INVOICES TAB -->
-            <div id="tab-invoices" class="tab-content hidden space-y-6">
-                <div class="bg-white p-6 rounded-lg shadow max-w-xl">
-                    <h3 class="text-lg font-semibold mb-4">Generate Multi-Item Client Invoice</h3>
-                    <div class="space-y-4">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700">Select Client</label>
-                            <select id="inv-client" onchange="loadUnbilledEntries()" class="mt-1 block w-full rounded border p-2 bg-white"></select>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Select Line Items to Invoice</label>
-                            <div id="unbilled-container" class="space-y-2 border p-3 rounded bg-gray-50 max-h-48 overflow-y-auto text-sm">
-                                <p class="text-gray-500">Select a client to view unbilled entries.</p>
-                            </div>
-                        </div>
-                        <button onclick="generateInvoice()" class="bg-green-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-green-700">Create Invoice</button>
-                    </div>
-                </div>
-
-                <div class="bg-white p-6 rounded-lg shadow space-y-4">
-                    <div class="flex justify-between items-center border-b pb-3">
-                        <div>
-                            <h3 class="text-lg font-semibold">Generated Invoices</h3>
-                            <p class="text-xs text-gray-500">Select multiple invoices for a client to consolidate them into a single master invoice.</p>
-                        </div>
-                        <button onclick="mergeSelectedInvoices()" class="bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold px-4 py-2 rounded shadow">
-                            🔗 Consolidate / Merge Selected Invoices
-                        </button>
-                    </div>
-                    <div id="invoices-list" class="space-y-3"></div>
-                </div>
-            </div>
-
-            <!-- CATALOG TAB -->
-            <div id="tab-catalog" class="tab-content hidden space-y-6">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div class="bg-white p-6 rounded-lg shadow space-y-3">
-                        <h3 class="text-lg font-semibold">Add Single Catalog Activity</h3>
-                        <form onsubmit="handleAddCatalogItem(event)" class="space-y-3">
-                            <input type="text" id="catalog-new-name" placeholder="Activity Name" required class="w-full border rounded p-2 text-sm">
-                            <input type="number" step="0.5" id="catalog-new-hrs" placeholder="Estimated Typical Hours" required class="w-full border rounded p-2 text-sm">
-                            <button type="submit" class="bg-blue-600 text-white text-sm font-medium px-4 py-2 rounded hover:bg-blue-700">Add to Catalog</button>
-                        </form>
-                    </div>
-
-                    <div class="bg-white p-6 rounded-lg shadow space-y-3">
-                        <h3 class="text-lg font-semibold">Bulk Import Catalog Items</h3>
-                        <p class="text-xs text-gray-500">Upload CSV or Excel (.xlsx) file with columns: <strong>Name, Hours</strong>.</p>
-                        <input type="file" id="catalog-file-input" accept=".csv, .xlsx, .xls" class="block w-full text-xs text-gray-500 file:mr-2 file:py-2 file:px-4 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700">
-                        <div class="flex space-x-2 pt-2">
-                            <button onclick="importCatalogFile()" class="bg-slate-800 text-white text-xs px-3 py-2 rounded hover:bg-slate-700">Upload & Import</button>
-                            <button onclick="downloadTemplate('catalog')" class="bg-gray-200 text-gray-700 text-xs px-3 py-2 rounded">📥 CSV Template</button>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="bg-white p-6 rounded-lg shadow">
-                    <h3 class="text-lg font-semibold mb-4">Activity Catalog</h3>
-                    <ul id="catalog-list" class="space-y-2 text-sm divide-y"></ul>
-                </div>
-            </div>
-
-            <!-- MIGRATE DATA TAB -->
-            <div id="tab-migrate" class="tab-content hidden space-y-6">
-                <div class="bg-white p-6 rounded-lg shadow space-y-4 max-w-3xl">
-                    <h3 class="text-lg font-semibold">Migrate Historical Data & Past Invoices</h3>
-                    <p class="text-sm text-gray-600">Import past logs or invoices into this registered account.</p>
-                    
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 border-t pt-4">
-                        <div class="border p-4 rounded bg-gray-50 space-y-2">
-                            <h4 class="font-semibold text-sm">1. Import Historical Time Logs</h4>
-                            <p class="text-xs text-gray-500">Columns: Date, Client, Project, Task, Hours, Rate, Notes, Invoiced(Yes/No)</p>
-                            <input type="file" id="migrate-logs-file" accept=".csv, .xlsx" class="block w-full text-xs text-gray-500">
-                            <div class="flex space-x-2 pt-2">
-                                <button onclick="importHistoricalLogs()" class="bg-blue-600 text-white text-xs px-3 py-2 rounded">Import Logs</button>
-                                <button onclick="downloadTemplate('logs')" class="bg-gray-200 text-xs px-3 py-2 rounded">Template</button>
-                            </div>
-                        </div>
-
-                        <div class="border p-4 rounded bg-gray-50 space-y-2">
-                            <h4 class="font-semibold text-sm">2. Import Past Invoices</h4>
-                            <p class="text-xs text-gray-500">Columns: InvoiceID, Client, Date, TotalAmount</p>
-                            <input type="file" id="migrate-invoices-file" accept=".csv, .xlsx" class="block w-full text-xs text-gray-500">
-                            <div class="flex space-x-2 pt-2">
-                                <button onclick="importPastInvoices()" class="bg-green-600 text-white text-xs px-3 py-2 rounded">Import Invoices</button>
-                                <button onclick="downloadTemplate('invoices')" class="bg-gray-200 text-xs px-3 py-2 rounded">Template</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-        </main>
-    </div>
-
-    <!-- Script Application Logic -->
-    <script>
         const INDUSTRY_PRESETS = {
             "Software Development": {
-                clients: [
-                    { name: "SaaS Venture Inc", currency: "$", rate: 150 },
-                    { name: "Fintech Europe Ltd", currency: "€", rate: 135 }
-                ],
-                projects: [
-                    { name: "Cloud Microservices API Development", desc: "RESTful architecture" },
-                    { name: "E-Commerce Mobile Application", desc: "iOS & Android app" }
-                ],
-                tasks: [
-                    { projIdx: 0, name: "Database Schema Design & Migration Scripts", estHours: 12 },
-                    { projIdx: 1, name: "Stripe & PayPal Payment Gateway Integration", estHours: 14 }
-                ],
-                catalog: [
-                    { name: "API Module Integration", hours: 16 }
-                ]
-            },
-            "Graphic & UI/UX Design": {
-                clients: [
-                    { name: "Vogue Media Agency", currency: "$", rate: 125 }
-                ],
-                projects: [
-                    { name: "Brand Identity & Design System", desc: "Logo & typography" }
-                ],
-                tasks: [
-                    { projIdx: 0, name: "High-Fidelity UI Screens & Interactive Prototype", estHours: 24 }
-                ],
-                catalog: [
-                    { name: "Logo Design Package", hours: 20 }
-                ]
+                clients: [{ name: "SaaS Venture Inc", currency: "$", rate: 150 }],
+                projects: [{ name: "Cloud Microservices API Development", desc: "RESTful architecture" }],
+                tasks: [{ projIdx: 0, name: "Database Schema Design", estHours: 12 }],
+                catalog: [{ name: "API Module Integration", hours: 16 }]
             },
             "General Freelance / Other": {
-                clients: [
-                    { name: "Global Client", currency: "$", rate: 100 }
-                ],
-                projects: [
-                    { name: "Professional Consulting & Execution", desc: "Client key deliverables" }
-                ],
-                tasks: [
-                    { projIdx: 0, name: "Client Discovery & Requirements Gathering", estHours: 8 }
-                ],
-                catalog: [
-                    { name: "Client Requirements Discovery", hours: 8 }
-                ]
+                clients: [{ name: "Global Client", currency: "$", rate: 100 }],
+                projects: [{ name: "Professional Consulting", desc: "Key deliverables" }],
+                tasks: [{ projIdx: 0, name: "Discovery & Requirements", estHours: 8 }],
+                catalog: [{ name: "Discovery", hours: 8 }]
             }
         };
 
-        let users = JSON.parse(localStorage.getItem('app_users')) || {};
-        let activeUserEmail = localStorage.getItem('app_active_user_email') || null;
+        window.switchAuthTab = function(tab) {
+            document.getElementById('login-form').classList.toggle('hidden', tab !== 'login');
+            document.getElementById('signup-form').classList.toggle('hidden', tab !== 'signup');
+            document.getElementById('auth-tab-login').className = tab === 'login' ? "font-bold text-sm text-blue-600 border-b-2 border-blue-600 pb-1" : "font-bold text-sm text-gray-500 pb-1";
+            document.getElementById('auth-tab-signup').className = tab === 'signup' ? "font-bold text-sm text-green-600 border-b-2 border-green-600 pb-1" : "font-bold text-sm text-gray-500 pb-1";
+        };
 
-        let accounts = JSON.parse(localStorage.getItem('app_accounts')) || {};
-        let activeCompanyId = localStorage.getItem('app_active_company_id') || null;
-
-        let clientChartInstance = null;
-        let projectChartInstance = null;
-
-        // AUTHENTICATION TAB SWITCHING
-        function switchAuthTab(tab) {
-            const loginForm = document.getElementById('login-form');
-            const signupForm = document.getElementById('signup-form');
-            const loginBtn = document.getElementById('auth-tab-login');
-            const signupBtn = document.getElementById('auth-tab-signup');
-
-            if (tab === 'login') {
-                loginForm.classList.remove('hidden');
-                signupForm.classList.add('hidden');
-                loginBtn.className = "font-bold text-sm text-blue-600 border-b-2 border-blue-600 pb-1";
-                signupBtn.className = "font-bold text-sm text-gray-500 hover:text-gray-800 pb-1";
-            } else {
-                loginForm.classList.add('hidden');
-                signupForm.classList.remove('hidden');
-                signupBtn.className = "font-bold text-sm text-green-600 border-b-2 border-green-600 pb-1";
-                loginBtn.className = "font-bold text-sm text-gray-500 hover:text-gray-800 pb-1";
-            }
-        }
-
-        function handleLoginSubmit(e) {
+        window.handleLoginSubmit = async function(e) {
             e.preventDefault();
-            const email = document.getElementById('login-email').value.trim().toLowerCase();
+            const email = document.getElementById('login-email').value;
             const password = document.getElementById('login-password').value;
-
-            if (!users[email] || users[email].password !== password) {
-                alert('Invalid email or password.');
-                return;
+            try {
+                await signInWithEmailAndPassword(auth, email, password);
+                document.getElementById('user-auth-modal').classList.add('hidden');
+            } catch (err) {
+                alert('Login failed: ' + err.message);
             }
+        };
 
-            activeUserEmail = email;
-            localStorage.setItem('app_active_user_email', activeUserEmail);
-            document.getElementById('user-auth-modal').classList.add('hidden');
-            checkCompanySetup();
-        }
-
-        function handleSignupSubmit(e) {
+        window.handleSignupSubmit = async function(e) {
             e.preventDefault();
-            const email = document.getElementById('signup-email').value.trim().toLowerCase();
+            const email = document.getElementById('signup-email').value;
             const password = document.getElementById('signup-password').value;
             const confirmPassword = document.getElementById('signup-password-confirm').value;
 
-            if (password.length < 6) {
-                alert('Password must be at least 6 characters long.');
-                return;
+            if (password !== confirmPassword) return alert('Passwords do not match.');
+            try {
+                await createUserWithEmailAndPassword(auth, email, password);
+                document.getElementById('user-auth-modal').classList.add('hidden');
+            } catch (err) {
+                alert('Signup failed: ' + err.message);
             }
+        };
 
-            if (password !== confirmPassword) {
-                alert('Passwords do not match. Please verify and try again.');
-                return;
-            }
-
-            if (users[email]) {
-                alert('An account with this email already exists. Please Sign In instead.');
-                switchAuthTab('login');
-                document.getElementById('login-email').value = email;
-                return;
-            }
-
-            users[email] = { email, password };
-            localStorage.setItem('app_users', JSON.stringify(users));
-
-            activeUserEmail = email;
-            localStorage.setItem('app_active_user_email', activeUserEmail);
-            document.getElementById('user-auth-modal').classList.add('hidden');
-            alert('Account registered successfully!');
-            checkCompanySetup();
-        }
-
-        function handleLogout() {
-            activeUserEmail = null;
-            activeCompanyId = null;
-            localStorage.removeItem('app_active_user_email');
-            localStorage.removeItem('app_active_company_id');
+        window.handleLogout = async function() {
+            await signOut(auth);
             location.reload();
+        };
+
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                currentUser = user;
+                document.getElementById('user-auth-modal').classList.add('hidden');
+                document.getElementById('logged-user-display').innerText = `👤 ${user.email}`;
+                
+                // Load cloud data from Firestore
+                const userDocRef = doc(db, "users", user.uid);
+                const userSnap = await getDoc(userDocRef);
+                if (userSnap.exists()) {
+                    accounts = userSnap.data().accounts || {};
+                    activeCompanyId = userSnap.data().activeCompanyId || null;
+                }
+                checkCompanySetup();
+            } else {
+                currentUser = null;
+                document.getElementById('user-auth-modal').classList.remove('hidden');
+            }
+        });
+
+        async function syncToCloud() {
+            if (!currentUser) return;
+            const userDocRef = doc(db, "users", currentUser.uid);
+            await setDoc(userDocRef, { accounts, activeCompanyId }, { merge: true });
         }
+
+        window.saveAccounts = function() {
+            syncToCloud();
+            initApp();
+        };
+
+        window.closeRegistrationModal = function() {
+            document.getElementById('auth-modal').classList.add('hidden');
+            if (!activeCompanyId) handleLogout();
+        };
 
         function checkCompanySetup() {
-            if (!activeUserEmail) {
-                document.getElementById('user-auth-modal').classList.remove('hidden');
-                return;
-            }
-
-            document.getElementById('logged-user-display').innerText = `👤 ${activeUserEmail}`;
-
-            const userCompanies = Object.keys(accounts).filter(id => accounts[id].owner === activeUserEmail);
-            
+            const userCompanies = Object.keys(accounts);
             if (userCompanies.length === 0) {
-                openRegistrationModal();
+                document.getElementById('auth-modal').classList.remove('hidden');
             } else {
-                if (!activeCompanyId || !accounts[activeCompanyId] || accounts[activeCompanyId].owner !== activeUserEmail) {
+                if (!activeCompanyId || !accounts[activeCompanyId]) {
                     activeCompanyId = userCompanies[0];
-                    localStorage.setItem('app_active_company_id', activeCompanyId);
                 }
                 initApp();
             }
         }
 
-        function toggleCustomCurrencyInput(prefix) {
-            const selectVal = document.getElementById(`${prefix}-currency-select`).value;
-            const customInput = document.getElementById(`${prefix}-currency-custom`);
-            if (selectVal === 'custom') {
-                customInput.classList.remove('hidden');
-                customInput.required = true;
-            } else {
-                customInput.classList.add('hidden');
-                customInput.required = false;
-            }
-        }
-
-        function getSelectedCurrency(prefix) {
-            const selectVal = document.getElementById(`${prefix}-currency-select`).value;
-            if (selectVal === 'custom') {
-                return document.getElementById(`${prefix}-currency-custom`).value.trim() || "$";
-            }
-            return selectVal;
-        }
-
-        function getActiveAccount() {
-            if (!activeCompanyId || !accounts[activeCompanyId]) return null;
-            return accounts[activeCompanyId];
-        }
-
-        function saveAccounts() {
-            localStorage.setItem('app_accounts', JSON.stringify(accounts));
-            if (activeCompanyId) {
-                localStorage.setItem('app_active_company_id', activeCompanyId);
-            }
-            initApp();
-        }
-
-        function openRegistrationModal() {
+        window.openRegistrationModal = function() {
             document.getElementById('auth-modal').classList.remove('hidden');
             const compSelect = document.getElementById('existing-companies-select');
-            const userCompanies = Object.keys(accounts).filter(k => accounts[k].owner === activeUserEmail);
-            
+            const userCompanies = Object.keys(accounts);
             if (userCompanies.length > 0) {
                 document.getElementById('switch-company-container').classList.remove('hidden');
                 compSelect.innerHTML = `<option value="">Select Existing Company Account...</option>` +
                     userCompanies.map(k => `<option value="${k}" ${k === activeCompanyId ? 'selected' : ''}>${accounts[k].company} (${accounts[k].industry})</option>`).join('');
-            } else {
-                document.getElementById('switch-company-container').classList.add('hidden');
             }
-        }
+        };
 
-        function handleRegistration(e) {
+        window.handleRegistration = function(e) {
             e.preventDefault();
             const companyName = document.getElementById('reg-company-name').value.trim();
             const industry = document.getElementById('reg-industry').value;
-            const currency = getSelectedCurrency('reg');
+            const currency = document.getElementById('reg-currency-select').value;
             const defaultRate = parseFloat(document.getElementById('reg-rate').value) || 120;
 
             const newId = 'comp_' + Date.now();
             const preset = INDUSTRY_PRESETS[industry] || INDUSTRY_PRESETS["General Freelance / Other"];
 
-            const newClients = preset.clients.map((c, idx) => ({
-                id: `c_${newId}_${idx}`,
-                name: c.name,
-                currency: c.currency || currency,
-                rate: c.rate || defaultRate
-            }));
-
-            const newProjects = preset.projects.map((p, idx) => ({
-                id: `p_${newId}_${idx}`,
-                clientId: newClients[idx % newClients.length]?.id || newClients[0]?.id || '',
-                name: p.name,
-                desc: p.desc
-            }));
-
-            const newTasks = preset.tasks.map((t, idx) => ({
-                id: `t_${newId}_${idx}`,
-                projectId: newProjects[t.projIdx]?.id || newProjects[0]?.id || '',
-                name: t.name,
-                estHours: t.estHours
-            }));
-
             accounts[newId] = {
                 id: newId,
-                owner: activeUserEmail,
                 company: companyName,
                 industry: industry,
                 currency: currency,
-                clients: newClients,
-                projects: newProjects,
-                tasks: newTasks,
+                clients: preset.clients.map((c, i) => ({ id: `c_${newId}_${i}`, ...c })),
+                projects: preset.projects.map((p, i) => ({ id: `p_${newId}_${i}`, clientId: `c_${newId}_0`, ...p })),
+                tasks: preset.tasks.map((t, i) => ({ id: `t_${newId}_${i}`, projectId: `p_${newId}_0`, ...t })),
                 catalog: [...preset.catalog],
                 timeLogs: [],
                 invoices: []
@@ -709,681 +172,89 @@
 
             activeCompanyId = newId;
             document.getElementById('auth-modal').classList.add('hidden');
-            saveAccounts();
-        }
+            window.saveAccounts();
+        };
 
-        function switchCompanyAccount(compId) {
-            if (!compId || !accounts[compId]) return;
+        window.switchCompanyAccount = function(compId) {
+            if (!compId) return;
             activeCompanyId = compId;
             document.getElementById('auth-modal').classList.add('hidden');
-            saveAccounts();
-        }
+            window.saveAccounts();
+        };
 
-        function switchTab(tabId) {
-            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
-            document.querySelectorAll('.tab-btn').forEach(el => {
-                el.classList.remove('bg-white', 'text-slate-900');
-                el.classList.add('text-slate-300');
-            });
-            document.getElementById('tab-' + tabId).classList.remove('hidden');
-            event.currentTarget.classList.add('bg-white', 'text-slate-900');
-            event.currentTarget.classList.remove('text-slate-300');
-        }
+        window.getActiveAccount = function() {
+            if (!activeCompanyId || !accounts[activeCompanyId]) return null;
+            return accounts[activeCompanyId];
+        };
 
-        function initApp() {
+        window.initApp = function() {
             const acc = getActiveAccount();
-            if (!acc) {
-                checkCompanySetup();
-                return;
-            }
-
+            if (!acc) return;
             document.getElementById('app-brand-title').innerText = acc.company;
             document.getElementById('app-brand-subtitle').innerText = `${acc.industry} Tracker (${acc.currency})`;
-
-            renderClientDropdowns();
-            renderDashboard();
-            renderTimeLogs();
-            renderProjectsAndTasks();
-            renderClients();
-            renderInvoices();
-            renderCatalog();
-        }
-
-        function renderClientDropdowns() {
-            const acc = getActiveAccount();
-            if (!acc) return;
-
-            const clientOpts = acc.clients.map(c => `<option value="${c.id}">${c.name} (${c.currency || acc.currency})</option>`).join('');
-            document.getElementById('log-client').innerHTML = clientOpts;
-            document.getElementById('proj-client').innerHTML = clientOpts;
-            document.getElementById('inv-client').innerHTML = `<option value="">Select Client...</option>` + clientOpts;
-
-            onClientChange();
-        }
-
-        function onClientChange() {
-            const acc = getActiveAccount();
-            if (!acc) return;
-
-            const selectedClientId = document.getElementById('log-client').value;
-            const filteredProjects = acc.projects.filter(p => p.clientId === selectedClientId);
-            const projSelect = document.getElementById('log-project');
-            
-            if (filteredProjects.length === 0) {
-                projSelect.innerHTML = `<option value="">No projects found for client</option>`;
-                document.getElementById('log-task').innerHTML = `<option value="">No tasks available</option>`;
-            } else {
-                projSelect.innerHTML = filteredProjects.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
-                onProjectChange();
-            }
-
-            document.getElementById('task-project').innerHTML = acc.projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
-
-            const client = acc.clients.find(c => c.id === selectedClientId);
-            if (client) {
-                document.getElementById('log-rate').value = client.rate;
-                document.getElementById('log-currency-symbol').innerText = client.currency || acc.currency;
-            }
-        }
-
-        function onProjectChange() {
-            const acc = getActiveAccount();
-            if (!acc) return;
-
-            const selectedProjId = document.getElementById('log-project').value;
-            const filteredTasks = acc.tasks.filter(t => t.projectId === selectedProjId);
-            const taskSelect = document.getElementById('log-task');
-
-            if (filteredTasks.length === 0) {
-                taskSelect.innerHTML = `<option value="">No tasks for this project</option>`;
-            } else {
-                taskSelect.innerHTML = filteredTasks.map(t => `<option value="${t.id}">${t.name} (${t.estHours} hrs)</option>`).join('');
-            }
-        }
-
-        function handleAddClient(e) {
-            e.preventDefault();
-            const acc = getActiveAccount();
-            if (!acc) return;
-
-            const name = document.getElementById('client-name').value;
-            const currency = getSelectedCurrency('client');
-            const rate = parseFloat(document.getElementById('client-rate').value);
-            
-            acc.clients.push({ id: 'c_' + Date.now(), name, currency, rate });
-            document.getElementById('client-name').value = '';
-            saveAccounts();
-        }
-
-        function handleAddProject(e) {
-            e.preventDefault();
-            const acc = getActiveAccount();
-            if (!acc) return;
-
-            const name = document.getElementById('proj-name').value;
-            const clientId = document.getElementById('proj-client').value;
-            const desc = document.getElementById('proj-desc').value;
-            acc.projects.push({ id: 'p_' + Date.now(), clientId, name, desc });
-            document.getElementById('proj-name').value = '';
-            document.getElementById('proj-desc').value = '';
-            saveAccounts();
-        }
-
-        function handleAddTask(e) {
-            e.preventDefault();
-            const acc = getActiveAccount();
-            if (!acc) return;
-
-            const name = document.getElementById('task-name').value;
-            const projectId = document.getElementById('task-project').value;
-            const estHours = parseFloat(document.getElementById('task-est-hrs').value) || 0;
-            acc.tasks.push({ id: 't_' + Date.now(), projectId, name, estHours });
-            document.getElementById('task-name').value = '';
-            document.getElementById('task-est-hrs').value = '';
-            saveAccounts();
-        }
-
-        function handleAddCatalogItem(e) {
-            e.preventDefault();
-            const acc = getActiveAccount();
-            if (!acc) return;
-
-            const name = document.getElementById('catalog-new-name').value;
-            const hours = parseFloat(document.getElementById('catalog-new-hrs').value);
-            acc.catalog.push({ name, hours });
-            document.getElementById('catalog-new-name').value = '';
-            document.getElementById('catalog-new-hrs').value = '';
-            saveAccounts();
-        }
-
-        function handleLogTime(e) {
-            e.preventDefault();
-            const acc = getActiveAccount();
-            if (!acc) return;
-
-            const entry = {
-                id: 'log_' + Date.now(),
-                date: new Date().toISOString().split('T')[0],
-                clientId: document.getElementById('log-client').value,
-                projectId: document.getElementById('log-project').value,
-                taskId: document.getElementById('log-task').value,
-                hours: parseFloat(document.getElementById('log-hours').value),
-                rate: parseFloat(document.getElementById('log-rate').value),
-                billable: document.getElementById('log-billable').checked,
-                notes: document.getElementById('log-notes').value,
-                invoiced: false
-            };
-            acc.timeLogs.push(entry);
-            document.getElementById('log-hours').value = '';
-            document.getElementById('log-notes').value = '';
-            saveAccounts();
-        }
-
-        function renderTimeLogs() {
-            const acc = getActiveAccount();
-            const tbody = document.getElementById('time-logs-table');
-            if (!acc || acc.timeLogs.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">No time entries logged yet.</td></tr>`;
-                return;
-            }
-            tbody.innerHTML = acc.timeLogs.map(l => {
-                const client = acc.clients.find(c => c.id === l.clientId);
-                const task = acc.tasks.find(t => t.id === l.taskId)?.name || 'General Task';
-                return `
-                    <tr>
-                        <td class="px-6 py-4">${l.date}</td>
-                        <td class="px-6 py-4 font-medium">${client ? client.name : 'Unknown'} (${client?.currency || acc.currency})</td>
-                        <td class="px-6 py-4">${task} <br><span class="text-xs text-gray-500">${l.notes}</span></td>
-                        <td class="px-6 py-4">${l.hours} hrs</td>
-                        <td class="px-6 py-4">${l.billable ? '<span class="text-green-600 font-semibold">Yes</span>' : 'No'}</td>
-                        <td class="px-6 py-4"><button onclick="deleteLog('${l.id}')" class="text-red-600 hover:underline">Delete</button></td>
-                    </tr>
-                `;
-            }).join('');
-        }
-
-        function deleteLog(id) {
-            const acc = getActiveAccount();
-            if (!acc) return;
-            acc.timeLogs = acc.timeLogs.filter(l => l.id !== id);
-            saveAccounts();
-        }
-
-        function renderProjectsAndTasks() {
-            const acc = getActiveAccount();
-            if (!acc) return;
-
-            document.getElementById('projects-list').innerHTML = acc.projects.map(p => {
-                const c = acc.clients.find(x => x.id === p.clientId)?.name || 'General Client';
-                return `<li class="border-b pb-1"><strong>${p.name}</strong> <span class="text-gray-500">(${c})</span></li>`;
-            }).join('');
-
-            document.getElementById('tasks-list').innerHTML = acc.tasks.map(t => {
-                const pr = acc.projects.find(x => x.id === t.projectId)?.name || 'General Project';
-                return `<li class="border-b pb-1"><strong>${t.name}</strong> <span class="text-gray-500">[${pr}] (~${t.estHours}h)</span></li>`;
-            }).join('');
-        }
-
-        function renderClients() {
-            const acc = getActiveAccount();
-            if (!acc) return;
-
-            document.getElementById('clients-grid').innerHTML = acc.clients.map(c => {
-                const clientLogs = acc.timeLogs.filter(l => l.clientId === c.id);
-                const totalHrs = clientLogs.reduce((sum, curr) => sum + curr.hours, 0);
-                const totalBill = clientLogs.filter(l => l.billable).reduce((sum, curr) => sum + (curr.hours * curr.rate), 0);
-                const currSymbol = c.currency || acc.currency;
-
-                return `
-                    <div class="border rounded-lg p-4 bg-gray-50 shadow-sm">
-                        <div class="flex justify-between items-center">
-                            <h4 class="font-bold text-lg">${c.name}</h4>
-                            <span class="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded font-bold">${currSymbol}</span>
-                        </div>
-                        <p class="text-sm text-gray-600 mt-1">Default Rate: ${currSymbol}${c.rate}/hr</p>
-                        <div class="mt-3 text-sm border-t pt-2 space-y-1">
-                            <p>Total Hours: <strong>${totalHrs}</strong></p>
-                            <p>Billed/Billable: <strong>${currSymbol}${totalBill.toFixed(2)}</strong></p>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-        }
-
-        function loadUnbilledEntries() {
-            const acc = getActiveAccount();
-            if (!acc) return;
-
-            const clientId = document.getElementById('inv-client').value;
-            const container = document.getElementById('unbilled-container');
-            const client = acc.clients.find(c => c.id === clientId);
-            const currSymbol = client?.currency || acc.currency;
-
-            const unbilled = acc.timeLogs.filter(l => l.clientId === clientId && l.billable && !l.invoiced);
-            
-            if (unbilled.length === 0) {
-                container.innerHTML = `<p class="text-gray-500">No unbilled time entries found for this client.</p>`;
-                return;
-            }
-
-            container.innerHTML = unbilled.map(l => {
-                const taskName = acc.tasks.find(t => t.id === l.taskId)?.name || 'Professional Services';
-                return `
-                    <label class="flex items-center space-x-2">
-                        <input type="checkbox" value="${l.id}" checked class="inv-checkbox rounded border-gray-300 h-4 w-4">
-                        <span>${l.date} - ${taskName} (${l.hours} hrs @ ${currSymbol}${l.rate}/hr) [${l.notes || 'No desc'}]</span>
-                    </label>
-                `;
-            }).join('');
-        }
-
-        function generateInvoice() {
-            const acc = getActiveAccount();
-            if (!acc) return;
-
-            const clientId = document.getElementById('inv-client').value;
-            const selectedIds = Array.from(document.querySelectorAll('.inv-checkbox:checked')).map(cb => cb.value);
-            
-            if (!clientId || selectedIds.length === 0) {
-                alert('Please select a client and check at least one unbilled item.');
-                return;
-            }
-
-            const client = acc.clients.find(c => c.id === clientId);
-            const entries = acc.timeLogs.filter(l => selectedIds.includes(l.id));
-            const totalAmount = entries.reduce((sum, curr) => sum + (curr.hours * curr.rate), 0);
-
-            const invoice = {
-                id: 'INV-' + Math.floor(1000 + Math.random() * 9000),
-                clientId,
-                currency: client?.currency || acc.currency,
-                date: new Date().toISOString().split('T')[0],
-                entries: selectedIds,
-                total: totalAmount
-            };
-
-            acc.invoices.push(invoice);
-            acc.timeLogs.forEach(l => {
-                if (selectedIds.includes(l.id)) l.invoiced = true;
-            });
-
-            saveAccounts();
-            alert('Invoice generated successfully!');
-        }
-
-        function mergeSelectedInvoices() {
-            const acc = getActiveAccount();
-            if (!acc) return;
-
-            const checkedBoxes = Array.from(document.querySelectorAll('.merge-inv-checkbox:checked'));
-            if (checkedBoxes.length < 2) {
-                alert('Please select at least 2 invoices to merge them together.');
-                return;
-            }
-
-            const selectedInvoiceIds = checkedBoxes.map(cb => cb.value);
-            const targetInvoices = acc.invoices.filter(i => selectedInvoiceIds.includes(i.id));
-
-            const firstClientId = targetInvoices[0].clientId;
-            const isSameClient = targetInvoices.every(i => i.clientId === firstClientId);
-
-            if (!isSameClient) {
-                alert('Cannot merge invoices from different clients! Please select invoices belonging to the same client.');
-                return;
-            }
-
-            const client = acc.clients.find(c => c.id === firstClientId);
-            const combinedEntries = targetInvoices.flatMap(i => i.entries);
-            const combinedTotal = targetInvoices.reduce((sum, i) => sum + i.total, 0);
-
-            const consolidatedInvoice = {
-                id: 'INV-MERGED-' + Math.floor(1000 + Math.random() * 9000),
-                clientId: firstClientId,
-                currency: client?.currency || acc.currency,
-                date: new Date().toISOString().split('T')[0],
-                entries: combinedEntries,
-                total: combinedTotal,
-                mergedFrom: selectedInvoiceIds
-            };
-
-            acc.invoices = acc.invoices.filter(i => !selectedInvoiceIds.includes(i.id));
-            acc.invoices.push(consolidatedInvoice);
-
-            saveAccounts();
-            alert(`Successfully merged ${selectedInvoiceIds.length} invoices into consolidated invoice ${consolidatedInvoice.id}!`);
-        }
-
-        function renderInvoices() {
-            const acc = getActiveAccount();
-            const container = document.getElementById('invoices-list');
-            if (!acc || acc.invoices.length === 0) {
-                container.innerHTML = `<p class="text-gray-500 text-sm">No invoices generated yet for this company account.</p>`;
-                return;
-            }
-            container.innerHTML = acc.invoices.map(inv => {
-                const client = acc.clients.find(c => c.id === inv.clientId);
-                const currSymbol = inv.currency || client?.currency || acc.currency;
-                const mergedTag = inv.mergedFrom ? `<span class="bg-purple-100 text-purple-800 text-xs px-2 py-0.5 rounded ml-2 font-semibold">Consolidated (${inv.mergedFrom.length} invoices)</span>` : '';
-
-                return `
-                    <div class="border p-4 rounded flex justify-between items-center text-sm shadow-sm bg-gray-50 hover:bg-white transition">
-                        <div class="flex items-center space-x-3">
-                            <input type="checkbox" value="${inv.id}" class="merge-inv-checkbox rounded border-gray-300 h-4 w-4">
-                            <div>
-                                <strong>${inv.id}</strong> - ${client?.name || 'Client'} (${inv.date}) ${mergedTag}
-                                <p class="text-gray-600">Total: <strong>${currSymbol}${inv.total.toFixed(2)}</strong> (${inv.entries.length} items)</p>
-                            </div>
-                        </div>
-                        <div>
-                            <button onclick="printInvoice('${inv.id}')" class="bg-blue-600 text-white px-3 py-1.5 rounded text-xs hover:bg-blue-700 font-medium">Print / View</button>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-        }
-
-        function printInvoice(invId) {
-            const acc = getActiveAccount();
-            if (!acc) return;
-
-            const inv = acc.invoices.find(i => i.id === invId);
-            const client = acc.clients.find(c => c.id === inv.clientId);
-            const currSymbol = inv.currency || client?.currency || acc.currency;
-            const entries = acc.timeLogs.filter(l => inv.entries.includes(l.id));
-
-            const printWindow = window.open('', '_blank');
-            if (!printWindow) {
-                alert('Popup blocked! Please allow popups to print invoices.');
-                return;
-            }
-
-            printWindow.document.write(`
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <title>Invoice ${inv.id}</title>
-                    <script src="https://cdn.tailwindcss.com"><\/script>
-                </head>
-                <body class="p-8 bg-white text-gray-900">
-                    <div class="max-w-2xl mx-auto space-y-6">
-                        <div class="flex justify-between border-b pb-4">
-                            <div>
-                                <h1 class="text-2xl font-bold">${acc.company}</h1>
-                                <p class="text-sm text-gray-500">${acc.industry} Services</p>
-                            </div>
-                            <div class="text-right">
-                                <h2 class="text-xl font-bold text-blue-600">${inv.id}</h2>
-                                <p class="text-sm text-gray-500">Date: ${inv.date}</p>
-                            </div>
-                        </div>
-                        <div>
-                            <h3 class="font-semibold text-gray-700">Billed To:</h3>
-                            <p class="text-lg font-bold">${client ? client.name : 'Valued Client'}</p>
-                        </div>
-                        <table class="w-full text-left border-collapse">
-                            <thead>
-                                <tr class="border-b bg-gray-50 text-xs uppercase text-gray-500">
-                                    <th class="py-2 px-3">Date</th>
-                                    <th class="py-2 px-3">Task & Activity Details</th>
-                                    <th class="py-2 px-3">Hours</th>
-                                    <th class="py-2 px-3">Rate</th>
-                                    <th class="py-2 px-3 text-right">Amount</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y text-sm">
-                                ${entries.map(e => {
-                                    const taskObj = acc.tasks.find(t => t.id === e.taskId);
-                                    const taskName = taskObj ? taskObj.name : 'Professional Services';
-                                    const desc = e.notes ? ` - ${e.notes}` : '';
-                                    return `
-                                        <tr>
-                                            <td class="py-3 px-3">${e.date}</td>
-                                            <td class="py-3 px-3"><strong>${taskName}</strong><br><span class="text-xs text-gray-600">${desc}</span></td>
-                                            <td class="py-3 px-3">${e.hours}</td>
-                                            <td class="py-3 px-3">${currSymbol}${e.rate}</td>
-                                            <td class="py-3 px-3 text-right">${currSymbol}${(e.hours * e.rate).toFixed(2)}</td>
-                                        </tr>
-                                    `;
-                                }).join('')}
-                            </tbody>
-                        </table>
-                        <div class="flex justify-end pt-4 border-t">
-                            <div class="text-right space-y-1">
-                                <p class="text-gray-500 text-sm">Total Due</p>
-                                <p class="text-2xl font-bold text-blue-600">${currSymbol}${inv.total.toFixed(2)}</p>
-                            </div>
-                        </div>
-                    </div>
-                    <script>
-                        window.onload = function() { window.print(); }
-                    <\/script>
-                </body>
-                </html>
-            `);
-            printWindow.document.close();
-        }
-
-        function renderCatalog() {
-            const acc = getActiveAccount();
-            if (!acc) return;
-            document.getElementById('catalog-list').innerHTML = acc.catalog.map(item => `
-                <li class="py-2 flex justify-between">
-                    <span>${item.name}</span>
-                    <span class="text-gray-500 font-medium">~${item.hours} hrs</span>
-                </li>
-            `).join('');
-        }
-
-        // CSV & Excel Import Functions
-        function importCatalogFile() {
-            const acc = getActiveAccount();
-            const fileInput = document.getElementById('catalog-file-input');
-            if (!acc || !fileInput.files.length) return alert('Select a file to import.');
-
-            const file = fileInput.files[0];
-            const reader = new FileReader();
-
-            reader.onload = function(e) {
-                const data = new Uint8Array(e.target.result);
-                const workbook = XLSX.read(data, { type: 'array' });
-                const rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
-
-                rows.forEach(r => {
-                    if (r.Name || r.name) {
-                        acc.catalog.push({
-                            name: r.Name || r.name,
-                            hours: parseFloat(r.Hours || r.hours || 0)
-                        });
-                    }
-                });
-
-                saveAccounts();
-                alert(`Successfully imported ${rows.length} catalog items!`);
-            };
-            reader.readAsArrayBuffer(file);
-        }
-
-        function importHistoricalLogs() {
-            const acc = getActiveAccount();
-            const fileInput = document.getElementById('migrate-logs-file');
-            if (!acc || !fileInput.files.length) return alert('Select a file to import.');
-
-            const file = fileInput.files[0];
-            const reader = new FileReader();
-
-            reader.onload = function(e) {
-                const data = new Uint8Array(e.target.result);
-                const workbook = XLSX.read(data, { type: 'array' });
-                const rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
-
-                rows.forEach(r => {
-                    let client = acc.clients.find(c => c.name.toLowerCase() === (r.Client || '').toLowerCase());
-                    if (!client && r.Client) {
-                        client = { id: 'c_' + Date.now() + Math.random(), name: r.Client, currency: r.Currency || acc.currency, rate: parseFloat(r.Rate || 120) };
-                        acc.clients.push(client);
-                    }
-
-                    let project = acc.projects.find(p => p.name.toLowerCase() === (r.Project || '').toLowerCase());
-                    if (!project && r.Project && client) {
-                        project = { id: 'p_' + Date.now() + Math.random(), clientId: client.id, name: r.Project, desc: 'Migrated Project' };
-                        acc.projects.push(project);
-                    }
-
-                    let task = acc.tasks.find(t => t.name.toLowerCase() === (r.Task || '').toLowerCase());
-                    if (!task && r.Task && project) {
-                        task = { id: 't_' + Date.now() + Math.random(), projectId: project.id, name: r.Task, estHours: parseFloat(r.Hours || 0) };
-                        acc.tasks.push(task);
-                    }
-
-                    acc.timeLogs.push({
-                        id: 'log_' + Date.now() + Math.random(),
-                        date: r.Date || new Date().toISOString().split('T')[0],
-                        clientId: client ? client.id : (acc.clients[0]?.id || ''),
-                        projectId: project ? project.id : (acc.projects[0]?.id || ''),
-                        taskId: task ? task.id : (acc.tasks[0]?.id || ''),
-                        hours: parseFloat(r.Hours || 0),
-                        rate: parseFloat(r.Rate || 120),
-                        billable: (r.Invoiced || '').toLowerCase() !== 'no',
-                        notes: r.Notes || 'Migrated Entry',
-                        invoiced: (r.Invoiced || '').toLowerCase() === 'yes'
-                    });
-                });
-
-                saveAccounts();
-                alert(`Successfully imported ${rows.length} time entries into ${acc.company}!`);
-            };
-            reader.readAsArrayBuffer(file);
-        }
-
-        function importPastInvoices() {
-            const acc = getActiveAccount();
-            const fileInput = document.getElementById('migrate-invoices-file');
-            if (!acc || !fileInput.files.length) return alert('Select a file to import.');
-
-            const file = fileInput.files[0];
-            const reader = new FileReader();
-
-            reader.onload = function(e) {
-                const data = new Uint8Array(e.target.result);
-                const workbook = XLSX.read(data, { type: 'array' });
-                const rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
-
-                rows.forEach(r => {
-                    let client = acc.clients.find(c => c.name.toLowerCase() === (r.Client || '').toLowerCase());
-                    if (!client && r.Client) {
-                        client = { id: 'c_' + Date.now() + Math.random(), name: r.Client, currency: r.Currency || acc.currency, rate: 120 };
-                        acc.clients.push(client);
-                    }
-
-                    acc.invoices.push({
-                        id: r.InvoiceID || ('INV-' + Math.floor(1000 + Math.random() * 9000)),
-                        clientId: client ? client.id : '',
-                        currency: r.Currency || client?.currency || acc.currency,
-                        date: r.Date || new Date().toISOString().split('T')[0],
-                        entries: [],
-                        total: parseFloat(r.TotalAmount || 0)
-                    });
-                });
-
-                saveAccounts();
-                alert(`Successfully imported ${rows.length} historical invoices!`);
-            };
-            reader.readAsArrayBuffer(file);
-        }
-
-        function downloadTemplate(type) {
-            let csvContent = "";
-            let fileName = "";
-
-            if (type === 'catalog') {
-                csvContent = "Name,Hours\nDesign Discovery,12\nUI Prototyping,8";
-                fileName = "catalog_template.csv";
-            } else if (type === 'logs') {
-                csvContent = "Date,Client,Currency,Project,Task,Hours,Rate,Notes,Invoiced\n2026-10-01,Acme Web Corp,$,Brand Identity,Wireframing,4,120,Completed layout draft,Yes";
-                fileName = "timelogs_template.csv";
-            } else if (type === 'invoices') {
-                csvContent = "InvoiceID,Client,Currency,Date,TotalAmount\nINV-9001,Acme Web Corp,$,2026-09-15,1200.00";
-                fileName = "invoices_template.csv";
-            }
-
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement("a");
-            link.href = URL.createObjectURL(blob);
-            link.setAttribute("download", fileName);
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        }
-
-        function renderDashboard() {
-            const acc = getActiveAccount();
-            if (!acc) return;
-
-            const totalHours = acc.timeLogs.reduce((sum, curr) => sum + curr.hours, 0);
-            const totalBillable = acc.timeLogs.filter(l => l.billable).reduce((sum, curr) => sum + (curr.hours * curr.rate), 0);
-            const unbilled = acc.timeLogs.filter(l => l.billable && !l.invoiced).reduce((sum, curr) => sum + (curr.hours * curr.rate), 0);
-            
-            document.getElementById('stat-total-hours').innerText = totalHours.toFixed(1);
-            document.getElementById('stat-total-billable').innerText = acc.currency + totalBillable.toFixed(2);
-            document.getElementById('stat-unbilled').innerText = acc.currency + unbilled.toFixed(2);
-            document.getElementById('stat-active-clients').innerText = acc.clients.length;
-
-            document.getElementById('table-client-summary').innerHTML = acc.clients.map(c => {
-                const clientLogs = acc.timeLogs.filter(l => l.clientId === c.id);
-                const hrs = clientLogs.reduce((sum, b) => sum + b.hours, 0);
-                const amt = clientLogs.filter(l => l.billable).reduce((sum, b) => sum + (b.hours * b.rate), 0);
-                const currSymbol = c.currency || acc.currency;
-                return `
-                    <tr>
-                        <td class="px-4 py-2 font-medium">${c.name}</td>
-                        <td class="px-4 py-2">${hrs} hrs</td>
-                        <td class="px-4 py-2"><strong>${currSymbol}${amt.toFixed(2)}</strong></td>
-                    </tr>
-                `;
-            }).join('');
-
-            document.getElementById('table-recent-logs').innerHTML = acc.timeLogs.slice(-5).reverse().map(l => {
-                const cName = acc.clients.find(c => c.id === l.clientId)?.name || 'Unknown';
-                return `
-                    <tr>
-                        <td class="px-4 py-2">${l.date}</td>
-                        <td class="px-4 py-2 font-medium">${cName}</td>
-                        <td class="px-4 py-2">${l.hours} hrs</td>
-                        <td class="px-4 py-2">${l.invoiced ? 'Invoiced' : (l.billable ? 'Unbilled' : 'Non-Billable')}</td>
-                    </tr>
-                `;
-            }).join('');
-
-            const clientNames = acc.clients.map(c => c.name);
-            const clientHoursData = acc.clients.map(c => acc.timeLogs.filter(l => l.clientId === c.id).reduce((sum, b) => sum + b.hours, 0));
-
-            if (clientChartInstance) clientChartInstance.destroy();
-            const ctxClient = document.getElementById('chartClientHours').getContext('2d');
-            clientChartInstance = new Chart(ctxClient, {
-                type: 'bar',
-                data: {
-                    labels: clientNames,
-                    datasets: [{ label: 'Hours', data: clientHoursData, backgroundColor: '#3b82f6' }]
-                },
-                options: { responsive: true, scales: { y: { beginAtZero: true } } }
-            });
-
-            const projectNames = acc.projects.map(p => p.name);
-            const projectHoursData = acc.projects.map(p => acc.timeLogs.filter(l => l.projectId === p.id).reduce((sum, b) => sum + b.hours, 0));
-
-            if (projectChartInstance) projectChartInstance.destroy();
-            const ctxProj = document.getElementById('chartProjectHours').getContext('2d');
-            projectChartInstance = new Chart(ctxProj, {
-                type: 'bar',
-                data: {
-                    labels: projectNames,
-                    datasets: [{ label: 'Hours', data: projectHoursData, backgroundColor: '#10b981' }]
-                },
-                options: { responsive: true, scales: { y: { beginAtZero: true } } }
-            });
-        }
-
-        window.onload = checkCompanySetup;
+            // Render basic view elements
+        };
     </script>
+</head>
+<body class="bg-gray-100 text-gray-900 font-sans">
+    <!-- AUTH MODALS -->
+    <div id="user-auth-modal" class="fixed inset-0 bg-slate-900 bg-opacity-95 flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden p-6">
+            <div class="flex justify-around border-b pb-3 mb-4">
+                <button id="auth-tab-login" onclick="switchAuthTab('login')" class="font-bold text-sm text-blue-600 border-b-2 border-blue-600 pb-1">Sign In</button>
+                <button id="auth-tab-signup" onclick="switchAuthTab('signup')" class="font-bold text-sm text-gray-500 pb-1">Sign Up</button>
+            </div>
+            <form id="login-form" onsubmit="handleLoginSubmit(event)" class="space-y-4">
+                <input type="email" id="login-email" required placeholder="Email" class="w-full border rounded p-2 text-sm">
+                <input type="password" id="login-password" required placeholder="Password" class="w-full border rounded p-2 text-sm">
+                <button type="submit" class="w-full bg-blue-600 text-white p-2 rounded text-sm font-semibold">Sign In</button>
+            </form>
+            <form id="signup-form" onsubmit="handleSignupSubmit(event)" class="space-y-4 hidden">
+                <input type="email" id="signup-email" required placeholder="Email" class="w-full border rounded p-2 text-sm">
+                <input type="password" id="signup-password" required placeholder="Password (min 6 chars)" class="w-full border rounded p-2 text-sm">
+                <input type="password" id="signup-password-confirm" required placeholder="Confirm Password" class="w-full border rounded p-2 text-sm">
+                <button type="submit" class="w-full bg-green-600 text-white p-2 rounded text-sm font-semibold">Register Account</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- COMPANY REGISTRATION MODAL -->
+    <div id="auth-modal" class="fixed inset-0 bg-slate-900 bg-opacity-95 flex items-center justify-center p-4 z-50 hidden">
+        <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full p-6 space-y-4 relative">
+            <button onclick="closeRegistrationModal()" class="absolute top-4 left-4 text-xs font-semibold text-gray-500">← Back</button>
+            <h2 class="text-xl font-bold text-center pt-2">Register Company Workspace</h2>
+            <form onsubmit="handleRegistration(event)" class="space-y-3">
+                <input type="text" id="reg-company-name" required placeholder="Company Name" class="w-full border rounded p-2 text-sm">
+                <select id="reg-industry" class="w-full border rounded p-2 text-sm">
+                    <option value="Software Development">Software Development</option>
+                    <option value="General Freelance / Other">General Freelance / Other</option>
+                </select>
+                <select id="reg-currency-select" class="w-full border rounded p-2 text-sm">
+                    <option value="$">USD ($)</option>
+                    <option value="₹">INR (₹)</option>
+                </select>
+                <input type="number" id="reg-rate" value="120" class="w-full border rounded p-2 text-sm">
+                <button type="submit" class="w-full bg-blue-600 text-white p-2 rounded text-sm font-semibold">Create Workspace</button>
+            </form>
+            <div id="switch-company-container" class="hidden border-t pt-2 text-center">
+                <select id="existing-companies-select" onchange="switchCompanyAccount(this.value)" class="w-full border rounded p-2 text-xs"></select>
+            </div>
+        </div>
+    </div>
+
+    <!-- APP HEADER -->
+    <header class="bg-slate-900 text-white shadow">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+            <div>
+                <h1 id="app-brand-title" class="text-xl font-bold">Business Activity Tracker</h1>
+                <p id="app-brand-subtitle" class="text-xs text-slate-400">Cloud Synced PWA</p>
+            </div>
+            <div class="flex items-center space-x-3">
+                <span id="logged-user-display" class="text-xs text-slate-300"></span>
+                <button onclick="openRegistrationModal()" class="bg-slate-800 text-xs px-3 py-1.5 rounded border border-slate-700">🏢 Switch Company</button>
+                <button onclick="handleLogout()" class="bg-red-800 text-xs px-3 py-1.5 rounded">Logout</button>
+            </div>
+        </div>
+    </header>
 </body>
 </html>
