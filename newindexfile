@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Universal Multi-Company Business & Activity Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+    
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        // TODO: Replace with your actual Firebase project configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyCuDLY1mBtvaG0vIz6AJNBNOesAg66nlHI",
+            authDomain: "ibtracker-84c57.firebaseapp.com",
+            projectId: "ibtracker-84c57",
+            storageBucket: "ibtracker-84c57.firebasestorage.app",
+            messagingSenderId: "765743778554",
+            appId: "1:765743778554:web:ae5bab4a7105def74fd743",
+            measurementId: "G-TYWEXKH79S"
+};
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const googleProvider = new GoogleAuthProvider();
+
+        let currentUser = null;
+        let activeCompanyId = null;
+        let accounts = {};
+        let clientChartInstance = null;
+        let projectChartInstance = null;
+
+        // EXPANDED INDUSTRY PRESETS (5+ Projects & 10+ Tasks per Archetype)
+        const INDUSTRY_PRESETS = {
+            "Software Development": {
+                clients: [
+                    { name: "SaaS Venture Inc", currency: "$", rate: 150 },
+                    { name: "Fintech Europe Ltd", currency: "€", rate: 135 },
+                    { name: "HealthTech Systems", currency: "$", rate: 160 }
+                ],
+                projects: [
+                    { name: "Cloud Microservices API Development", desc: "RESTful architecture & scalable cloud setup" },
+                    { name: "E-Commerce Mobile Application", desc: "iOS & Android cross-platform app build" },
+                    { name: "Enterprise ERP Portal Upgrade", desc: "Legacy migration & frontend modernization" },
+                    { name: "DevOps & CI/CD Pipeline Automation", desc: "Automated deployment, testing, and monitoring" },
+                    { name: "Cybersecurity & OAuth2 Auth Integration", desc: "Security vulnerability remediation & SSO setup" }
+                ],
+                tasks: [
+                    { projIdx: 0, name: "Database Schema Design & Migration Scripts", estHours: 12 },
+                    { projIdx: 0, name: "REST API Endpoint Construction & Swagger Docs", estHours: 20 },
+                    { projIdx: 1, name: "Flutter React Native UI Layout Implementation", estHours: 24 },
+                    { projIdx: 1, name: "Stripe & PayPal Payment Gateway Integration", estHours: 14 },
+                    { projIdx: 2, name: "Vue.js / React Frontend Dashboard Refactoring", estHours: 18 },
+                    { projIdx: 2, name: "Legacy Database Data Extraction & Sanitization", estHours: 16 },
+                    { projIdx: 3, name: "Kubernetes Containerization & Dockerfile Setup", estHours: 10 },
+                    { projIdx: 3, name: "GitHub Actions / GitLab CI/CD Pipeline Build", estHours: 8 },
+                    { projIdx: 4, name: "OAuth2 & JWT Authentication Service Setup", estHours: 12 },
+                    { projIdx: 4, name: "Penetration Testing & Security Vulnerability Patching", estHours: 15 }
+                ],
+                catalog: [
+                    { name: "API Module Integration", hours: 16 },
+                    { name: "Database Schema Optimization", hours: 12 },
+                    { name: "Security Audit & Vulnerability Fix", hours: 10 }
+                ]
+            },
+            "Graphic & UI/UX Design": {
+                clients: [
+                    { name: "Vogue Media Agency", currency: "$", rate: 125 },
+                    { name: "Nordic Design Studio", currency: "€", rate: 115 }
+                ],
+                projects: [
+                    { name: "Brand Identity & Design System", desc: "Logo, typography, and design tokens" },
+                    { name: "Web App UI/UX Figma Design", desc: "Wireframing, prototyping, and design specs" },
+                    { name: "E-Commerce Website Visual Redesign", desc: "Desktop and mobile user experience overhaul" },
+                    { name: "Marketing Collateral & Pitch Decks", desc: "Print ads, social templates, and investor decks" },
+                    { name: "Product Packaging & Retail Branding", desc: "Physical package layout and print proofs" }
+                ],
+                tasks: [
+                    { projIdx: 0, name: "Brand Moodboard & Competitor Visual Audit", estHours: 8 },
+                    { projIdx: 0, name: "Vector Logo Design & Symbol Exploration", estHours: 16 },
+                    { projIdx: 1, name: "Low-Fidelity Wireframing & User Flow Mapping", estHours: 14 },
+                    { projIdx: 1, name: "High-Fidelity UI Screens & Interactive Prototype", estHours: 24 },
+                    { projIdx: 2, name: "E-Commerce Mobile UX Screen Adaptations", estHours: 12 },
+                    { projIdx: 3, name: "Investor Pitch Deck Visual Formatting", estHours: 10 },
+                    { projIdx: 4, name: "Packaging Dieline Layout & Print Pre-flight", estHours: 12 }
+                ],
+                catalog: [
+                    { name: "Logo Design Package", hours: 20 },
+                    { name: "Figma Component Design System", hours: 16 }
+                ]
+            },
+            "Digital Marketing": {
+                clients: [
+                    { name: "Global E-Com Retail", currency: "$", rate: 110 },
+                    { name: "Apex SaaS Agency", currency: "£", rate: 95 }
+                ],
+                projects: [
+                    { name: "Q4 Technical SEO & Content Strategy", desc: "Organic search visibility and technical audit" },
+                    { name: "Google & Meta Paid Ad Campaign", desc: "PPC setup, copy, and conversion tracking" },
+                    { name: "Social Media & Influencer Outreach", desc: "Content calendar and viral growth drive" },
+                    { name: "Email Marketing & Lead Nurturing Automations", desc: "Klaviyo funnel setup & drip sequences" },
+                    { name: "Conversion Rate Optimization (CRO)", desc: "A/B testing, heatmap analysis, and landing pages" }
+                ],
+                tasks: [
+                    { projIdx: 0, name: "Technical SEO Audit & Site Speed Diagnostics", estHours: 8 },
+                    { projIdx: 1, name: "PPC Ad Copy Creation & Graphic Visual Assets", estHours: 8 },
+                    { projIdx: 2, name: "Monthly Content Calendar Creation & Scheduling", estHours: 12 },
+                    { projIdx: 3, name: "Drip Campaign Flow Automation Setup", estHours: 10 },
+                    { projIdx: 4, name: "Heatmap & User Session Recording Analysis", estHours: 6 }
+                ],
+                catalog: [
+                    { name: "Technical SEO Site Audit", hours: 10 },
+                    { name: "PPC Campaign Setup", hours: 8 }
+                ]
+            },
+            "Legal Services": {
+                clients: [{ name: "Sterling Capital Holdings", currency: "$", rate: 250 }],
+                projects: [
+                    { name: "Corporate Restructuring & M&A Advisory", desc: "Mergers and acquisitions" },
+                    { name: "Intellectual Property & Patent Protection", desc: "Trademarks and patents" },
+                    { name: "GDPR & Data Privacy Regulatory Compliance", desc: "Privacy policies & audit" },
+                    { name: "Employment Contract & HR Legal Oversight", desc: "Staff agreements" },
+                    { name: "Commercial Vendor Contract Drafting", desc: "SLA and agreements" }
+                ],
+                tasks: [
+                    { projIdx: 0, name: "M&A Financial & Legal Due Diligence Review", estHours: 20 },
+                    { projIdx: 1, name: "Patent Application Drafting", estHours: 16 },
+                    { projIdx: 2, name: "GDPR Compliance Audit", estHours: 12 }
+                ],
+                catalog: [{ name: "Master Services Agreement Drafting", hours: 10 }]
+            },
+            "Accounting & Tax": {
+                clients: [{ name: "Vanguard Global Tech", currency: "$", rate: 160 }],
+                projects: [
+                    { name: "Annual Corporate Tax Compliance & Filing", desc: "Corporate returns" },
+                    { name: "Quarterly Financial Audit & Reconciliation", desc: "Balance sheet & P&L" },
+                    { name: "Payroll & Transfer Pricing Structuring", desc: "Multi-jurisdiction payroll" },
+                    { name: "Forensic Accounting & Fraud Risk Analysis", desc: "Internal control" },
+                    { name: "R&D Tax Credit & Incentive Optimization", desc: "Expenditure audit" }
+                ],
+                tasks: [
+                    { projIdx: 0, name: "Corporate Income Tax Return Preparation", estHours: 18 },
+                    { projIdx: 1, name: "General Ledger Account Reconciliation", estHours: 14 }
+                ],
+                catalog: [{ name: "Corporate Income Tax Filing", hours: 16 }]
+            },
+            "HR & Recruitment": {
+                clients: [{ name: "HyperGrowth Tech Corp", currency: "$", rate: 110 }],
+                projects: [
+                    { name: "Executive C-Suite Talent Acquisition", desc: "Headhunting" },
+                    { name: "Compensation & Benefits Benchmarking", desc: "Salary bands" },
+                    { name: "HR Policy & Onboarding Framework Build", desc: "Handbooks" },
+                    { name: "Performance Management System Design", desc: "KPIs & OKRs" },
+                    { name: "Diversity, Equity & Inclusion (DEI) Audit", desc: "Demographic review" }
+                ],
+                tasks: [
+                    { projIdx: 0, name: "Executive Candidate Sourcing & Headhunting", estHours: 16 },
+                    { projIdx: 1, name: "Industry Salary Benchmark Analysis", estHours: 12 }
+                ],
+                catalog: [{ name: "Executive Search & Recruitment", hours: 24 }]
+            },
+            "Construction & Architecture": {
+                clients: [{ name: "Skyline Urban Developers", currency: "$", rate: 145 }],
+                projects: [
+                    { name: "Commercial High-Rise Architectural Blueprint", desc: "CAD design" },
+                    { name: "Residential Complex Site Management", desc: "Contractor supervision" },
+                    { name: "MEP (Mechanical, Electrical, Plumbing) Design", desc: "Building systems" },
+                    { name: "Environmental Impact & Zoning Assessment", desc: "Land survey" },
+                    { name: "Structural Integrity & Seismic Safety Audit", desc: "Material testing" }
+                ],
+                tasks: [
+                    { projIdx: 0, name: "Architectural 3D BIM Model & CAD Drafting", estHours: 24 },
+                    { projIdx: 1, name: "Daily On-Site Contractor Inspection", estHours: 15 }
+                ],
+                catalog: [{ name: "Architectural BIM 3D Blueprint", hours: 24 }]
+            },
+            "Management & Strategy": {
+                clients: [{ name: "Apex Enterprises", currency: "$", rate: 200 }],
+                projects: [
+                    { name: "Digital Transformation Strategy", desc: "Operational automation" },
+                    { name: "Supply Chain & Operations Optimization", desc: "Cost reduction" },
+                    { name: "Market Expansion & Go-To-Market (GTM)", desc: "Competitive analysis" },
+                    { name: "Change Management & Org Restructuring", desc: "Leadership alignment" },
+                    { name: "Post-Merger Operational Integration", desc: "Merging IT systems" }
+                ],
+                tasks: [
+                    { projIdx: 0, name: "Executive Stakeholder Discovery Interviews", estHours: 12 },
+                    { projIdx: 1, name: "Supply Chain Cost Analysis", estHours: 18 }
+                ],
+                catalog: [{ name: "Digital Transformation Audit", hours: 20 }]
+            },
+            "SAP Consulting": {
+                clients: [{ name: "Global Tech Corp", currency: "$", rate: 160 }],
+                projects: [
+                    { name: "S/4HANA Greenfield Implementation", desc: "ERP deployment" },
+                    { name: "SAP RISE Migration & Cloud Transformation", desc: "ECC to Cloud" },
+                    { name: "SAP Basis System Landscape Management", desc: "Transports & upgrades" },
+                    { name: "SAP Fiori UX & Custom ABAP Module Build", desc: "UI enhancement" },
+                    { name: "SAP Security, GRC & Authorization Audit", desc: "SoD audit" }
+                ],
+                tasks: [
+                    { projIdx: 0, name: "Core Module Configuration (FI/CO, MM, SD)", estHours: 30 },
+                    { projIdx: 2, name: "STMS Transport Domain Setup", estHours: 8 }
+                ],
+                catalog: [{ name: "SAP S/4HANA System Sizing & Architecture", hours: 16 }]
+            },
+            "General Freelance / Other": {
+                clients: [{ name: "Global Client", currency: "$", rate: 100 }],
+                projects: [{ name: "Professional Consulting & Execution", desc: "Client deliverables" }],
+                tasks: [{ projIdx: 0, name: "Client Discovery & Requirements Gathering", estHours: 8 }],
+                catalog: [{ name: "Client Requirements Discovery", hours: 8 }]
+            }
+        };
+
+        // AUTHENTICATION TAB SWITCHING
+        window.switchAuthTab = function(tab) {
+            document.getElementById('login-form').classList.toggle('hidden', tab !== 'login');
+            document.getElementById('signup-form').classList.toggle('hidden', tab !== 'signup');
+            document.getElementById('auth-tab-login').className = tab === 'login' ? "font-bold text-sm text-blue-600 border-b-2 border-blue-600 pb-1" : "font-bold text-sm text-gray-500 pb-1";
+            document.getElementById('auth-tab-signup').className = tab === 'signup' ? "font-bold text-sm text-green-600 border-b-2 border-green-600 pb-1" : "font-bold text-sm text-gray-500 pb-1";
+        };
+
+        window.handleLoginSubmit = async function(e) {
+            e.preventDefault();
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+            try {
+                await signInWithEmailAndPassword(auth, email, password);
+                document.getElementById('user-auth-modal').classList.add('hidden');
+            } catch (err) { alert('Login failed: ' + err.message); }
+        };
+
+        window.handleSignupSubmit = async function(e) {
+            e.preventDefault();
+            const email = document.getElementById('signup-email').value;
+            const password = document.getElementById('signup-password').value;
+            const confirmPassword = document.getElementById('signup-password-confirm').value;
+            if (password !== confirmPassword) return alert('Passwords do not match.');
+            try {
+                await createUserWithEmailAndPassword(auth, email, password);
+                document.getElementById('user-auth-modal').classList.add('hidden');
+            } catch (err) { alert('Signup failed: ' + err.message); }
+        };
+
+        window.handleGoogleSignIn = async function() {
+            try {
+                await signInWithPopup(auth, googleProvider);
+                document.getElementById('user-auth-modal').classList.add('hidden');
+            } catch (err) { alert('Google Sign-In failed: ' + err.message); }
+        };
+
+        window.handleLogout = async function() {
+            await signOut(auth);
+            location.reload();
+        };
+
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                currentUser = user;
+                document.getElementById('user-auth-modal').classList.add('hidden');
+                document.getElementById('logged-user-display').innerText = `👤 ${user.email}`;
+                
+                const userDocRef = doc(db, "users", user.uid);
+                const userSnap = await getDoc(userDocRef);
+                if (userSnap.exists()) {
+                    accounts = userSnap.data().accounts || {};
+                    activeCompanyId = userSnap.data().activeCompanyId || null;
+                }
+                checkCompanySetup();
+            } else {
+                currentUser = null;
+                document.getElementById('user-auth-modal').classList.remove('hidden');
+            }
+        });
+
+        async function syncToCloud() {
+            if (!currentUser) return;
+            const userDocRef = doc(db, "users", currentUser.uid);
+            await setDoc(userDocRef, { accounts, activeCompanyId }, { merge: true });
+        }
+
+        window.saveAccounts = function() {
+            syncToCloud();
+            initApp();
+        };
+
+        window.closeRegistrationModal = function() {
+            document.getElementById('auth-modal').classList.add('hidden');
+            if (!activeCompanyId) handleLogout();
+        };
+
+        function checkCompanySetup() {
+            const userCompanies = Object.keys(accounts);
+            if (userCompanies.length === 0) {
+                openRegistrationModal();
+            } else {
+                if (!activeCompanyId || !accounts[activeCompanyId]) {
+                    activeCompanyId = userCompanies[0];
+                }
+                initApp();
+            }
+        }
+
+        window.openRegistrationModal = function() {
+            document.getElementById('auth-modal').classList.remove('hidden');
+            const compSelect = document.getElementById('existing-companies-select');
+            const userCompanies = Object.keys(accounts);
+            if (userCompanies.length > 0) {
+                document.getElementById('switch-company-container').classList.remove('hidden');
+                compSelect.innerHTML = `<option value="">Select Existing Company Account...</option>` +
+                    userCompanies.map(k => `<option value="${k}" ${k === activeCompanyId ? 'selected' : ''}>${accounts[k].company} (${accounts[k].industry})</option>`).join('');
+            } else {
+                document.getElementById('switch-company-container').classList.add('hidden');
+            }
+        };
+
+        window.handleRegistration = function(e) {
+            e.preventDefault();
+            const companyName = document.getElementById('reg-company-name').value.trim();
+            const industry = document.getElementById('reg-industry').value;
+            const currency = document.getElementById('reg-currency-select').value;
+            const defaultRate = parseFloat(document.getElementById('reg-rate').value) || 120;
+
+            const newId = 'comp_' + Date.now();
+            const preset = INDUSTRY_PRESETS[industry] || INDUSTRY_PRESETS["General Freelance / Other"];
+
+            const newClients = preset.clients.map((c, idx) => ({ id: `c_${newId}_${idx}`, name: c.name, currency: c.currency || currency, rate: c.rate || defaultRate }));
+            const newProjects = preset.projects.map((p, idx) => ({ id: `p_${newId}_${idx}`, clientId: newClients[idx % newClients.length]?.id || newClients[0]?.id || '', name: p.name, desc: p.desc }));
+            const newTasks = preset.tasks.map((t, idx) => ({ id: `t_${newId}_${idx}`, projectId: newProjects[t.projIdx]?.id || newProjects[0]?.id || '', name: t.name, estHours: t.estHours }));
+
+            accounts[newId] = {
+                id: newId,
+                company: companyName,
+                industry: industry,
+                currency: currency,
+                clients: newClients,
+                projects: newProjects,
+                tasks: newTasks,
+                catalog: [...preset.catalog],
+                timeLogs: [],
+                invoices: []
+            };
+
+            activeCompanyId = newId;
+            document.getElementById('auth-modal').classList.add('hidden');
+            window.saveAccounts();
+        };
+
+        window.switchCompanyAccount = function(compId) {
+            if (!compId) return;
+            activeCompanyId = compId;
+            document.getElementById('auth-modal').classList.add('hidden');
+            window.saveAccounts();
+        };
+
+        window.getActiveAccount = function() {
+            if (!activeCompanyId || !accounts[activeCompanyId]) return null;
+            return accounts[activeCompanyId];
+        };
+
+        window.switchTab = function(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.tab-btn').forEach(el => {
+                el.classList.remove('bg-white', 'text-slate-900');
+                el.classList.add('text-slate-300');
+            });
+            document.getElementById('tab-' + tabId).classList.remove('hidden');
+            event.currentTarget.classList.add('bg-white', 'text-slate-900');
+            event.currentTarget.classList.remove('text-slate-300');
+        };
+
+        window.initApp = function() {
+            const acc = getActiveAccount();
+            if (!acc) return;
+            document.getElementById('app-brand-title').innerText = acc.company;
+            document.getElementById('app-brand-subtitle').innerText = `${acc.industry} Tracker (${acc.currency})`;
+
+            renderClientDropdowns();
+            renderDashboard();
+            renderTimeLogs();
+            renderProjectsAndTasks();
+            renderClients();
+            renderInvoices();
+            renderCatalog();
+        };
+
+        function renderClientDropdowns() {
+            const acc = getActiveAccount();
+            if (!acc) return;
+            const clientOpts = acc.clients.map(c => `<option value="${c.id}">${c.name} (${c.currency || acc.currency})</option>`).join('');
+            document.getElementById('log-client').innerHTML = clientOpts;
+            document.getElementById('proj-client').innerHTML = clientOpts;
+            document.getElementById('inv-client').innerHTML = `<option value="">Select Client...</option>` + clientOpts;
+            onClientChange();
+        }
+
+        window.onClientChange = function() {
+            const acc = getActiveAccount();
+            if (!acc) return;
+            const selectedClientId = document.getElementById('log-client').value;
+            const filteredProjects = acc.projects.filter(p => p.clientId === selectedClientId);
+            const projSelect = document.getElementById('log-project');
+            
+            if (filteredProjects.length === 0) {
+                projSelect.innerHTML = `<option value="">No projects found for client</option>`;
+                document.getElementById('log-task').innerHTML = `<option value="">No tasks available</option>`;
+            } else {
+                projSelect.innerHTML = filteredProjects.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+                onProjectChange();
+            }
+            document.getElementById('task-project').innerHTML = acc.projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+            const client = acc.clients.find(c => c.id === selectedClientId);
+            if (client) {
+                document.getElementById('log-rate').value = client.rate;
+                document.getElementById('log-currency-symbol').innerText = client.currency || acc.currency;
+            }
+        };
+
+        window.onProjectChange = function() {
+            const acc = getActiveAccount();
+            if (!acc) return;
+            const selectedProjId = document.getElementById('log-project').value;
+            const filteredTasks = acc.tasks.filter(t => t.projectId === selectedProjId);
+            const taskSelect = document.getElementById('log-task');
+            taskSelect.innerHTML = filteredTasks.length === 0 ? `<option value="">No tasks for this project</option>` : filteredTasks.map(t => `<option value="${t.id}">${t.name} (${t.estHours} hrs)</option>`).join('');
+        };
+
+        window.handleAddClient = function(e) {
+            e.preventDefault();
+            const acc = getActiveAccount();
+            if (!acc) return;
+            acc.clients.push({ id: 'c_' + Date.now(), name: document.getElementById('client-name').value, currency: document.getElementById('client-currency-select').value, rate: parseFloat(document.getElementById('client-rate').value) });
+            document.getElementById('client-name').value = '';
+            window.saveAccounts();
+        };
+
+        window.handleAddProject = function(e) {
+            e.preventDefault();
+            const acc = getActiveAccount();
+            if (!acc) return;
+            acc.projects.push({ id: 'p_' + Date.now(), clientId: document.getElementById('proj-client').value, name: document.getElementById('proj-name').value, desc: document.getElementById('proj-desc').value });
+            document.getElementById('proj-name').value = '';
+            document.getElementById('proj-desc').value = '';
+            window.saveAccounts();
+        };
+
+        window.handleAddTask = function(e) {
+            e.preventDefault();
+            const acc = getActiveAccount();
+            if (!acc) return;
+            acc.tasks.push({ id: 't_' + Date.now(), projectId: document.getElementById('task-project').value, name: document.getElementById('task-name').value, estHours: parseFloat(document.getElementById('task-est-hrs').value) || 0 });
+            document.getElementById('task-name').value = '';
+            document.getElementById('task-est-hrs').value = '';
+            window.saveAccounts();
+        };
+
+        window.handleAddCatalogItem = function(e) {
+            e.preventDefault();
+            const acc = getActiveAccount();
+            if (!acc) return;
+            acc.catalog.push({ name: document.getElementById('catalog-new-name').value, hours: parseFloat(document.getElementById('catalog-new-hrs').value) });
+            document.getElementById('catalog-new-name').value = '';
+            document.getElementById('catalog-new-hrs').value = '';
+            window.saveAccounts();
+        };
+
+        window.handleLogTime = function(e) {
+            e.preventDefault();
+            const acc = getActiveAccount();
+            if (!acc) return;
+            acc.timeLogs.push({
+                id: 'log_' + Date.now(),
+                date: new Date().toISOString().split('T')[0],
+                clientId: document.getElementById('log-client').value,
+                projectId: document.getElementById('log-project').value,
+                taskId: document.getElementById('log-task').value,
+                hours: parseFloat(document.getElementById('log-hours').value),
+                rate: parseFloat(document.getElementById('log-rate').value),
+                billable: document.getElementById('log-billable').checked,
+                notes: document.getElementById('log-notes').value,
+                invoiced: false
+            });
+            document.getElementById('log-hours').value = '';
+            document.getElementById('log-notes').value = '';
+            window.saveAccounts();
+        };
+
+        function renderTimeLogs() {
+            const acc = getActiveAccount();
+            const tbody = document.getElementById('time-logs-table');
+            if (!acc || acc.timeLogs.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">No time entries logged yet.</td></tr>`;
+                return;
+            }
+            tbody.innerHTML = acc.timeLogs.map(l => {
+                const client = acc.clients.find(c => c.id === l.clientId);
+                const task = acc.tasks.find(t => t.id === l.taskId)?.name || 'General Task';
+                return `<tr><td class="px-6 py-4">${l.date}</td><td class="px-6 py-4 font-medium">${client?.name || 'Unknown'}</td><td class="px-6 py-4">${task}</td><td class="px-6 py-4">${l.hours} hrs</td><td class="px-6 py-4">${l.billable ? 'Yes' : 'No'}</td><td class="px-6 py-4"><button onclick="deleteLog('${l.id}')" class="text-red-600">Delete</button></td></tr>`;
+            }).join('');
+        }
+
+        window.deleteLog = function(id) {
+            const acc = getActiveAccount();
+            if (!acc) return;
+            acc.timeLogs = acc.timeLogs.filter(l => l.id !== id);
+            window.saveAccounts();
+        };
+
+        function renderProjectsAndTasks() {
+            const acc = getActiveAccount();
+            if (!acc) return;
+            document.getElementById('projects-list').innerHTML = acc.projects.map(p => `<li class="border-b pb-1"><strong>${p.name}</strong></li>`).join('');
+            document.getElementById('tasks-list').innerHTML = acc.tasks.map(t => `<li class="border-b pb-1"><strong>${t.name}</strong></li>`).join('');
+        }
+
+        function renderClients() {
+            const acc = getActiveAccount();
+            if (!acc) return;
+            document.getElementById('clients-grid').innerHTML = acc.clients.map(c => `<div class="border rounded p-4 bg-gray-50"><h4 class="font-bold">${c.name}</h4><p class="text-sm">Rate: ${c.currency || acc.currency}${c.rate}/hr</p></div>`).join('');
+        }
+
+        window.loadUnbilledEntries = function() {
+            const acc = getActiveAccount();
+            if (!acc) return;
+            const clientId = document.getElementById('inv-client').value;
+            const container = document.getElementById('unbilled-container');
+            const unbilled = acc.timeLogs.filter(l => l.clientId === clientId && l.billable && !l.invoiced);
+            container.innerHTML = unbilled.length === 0 ? `<p class="text-gray-500">No unbilled time entries found.</p>` : unbilled.map(l => `<label class="flex items-center space-x-2"><input type="checkbox" value="${l.id}" checked class="inv-checkbox h-4 w-4"><span>${l.date} - ${l.hours} hrs</span></label>`).join('');
+        };
+
+        window.generateInvoice = function() {
+            const acc = getActiveAccount();
+            if (!acc) return;
+            const clientId = document.getElementById('inv-client').value;
+            const selectedIds = Array.from(document.querySelectorAll('.inv-checkbox:checked')).map(cb => cb.value);
+            if (!clientId || selectedIds.length === 0) return alert('Select client and items.');
+            
+            const entries = acc.timeLogs.filter(l => selectedIds.includes(l.id));
+            const total = entries.reduce((sum, curr) => sum + (curr.hours * curr.rate), 0);
+            acc.invoices.push({ id: 'INV-' + Math.floor(1000 + Math.random() * 9000), clientId, entries: selectedIds, total, date: new Date().toISOString().split('T')[0] });
+            acc.timeLogs.forEach(l => { if (selectedIds.includes(l.id)) l.invoiced = true; });
+            window.saveAccounts();
+            alert('Invoice generated!');
+        };
+
+        window.mergeSelectedInvoices = function() {
+            const acc = getActiveAccount();
+            if (!acc) return;
+            const checkedBoxes = Array.from(document.querySelectorAll('.merge-inv-checkbox:checked'));
+            if (checkedBoxes.length < 2) return alert('Select at least 2 invoices to merge.');
+            const selectedIds = checkedBoxes.map(cb => cb.value);
+            const target = acc.invoices.filter(i => selectedIds.includes(i.id));
+            const firstClientId = target[0].clientId;
+            if (!target.every(i => i.clientId === firstClientId)) return alert('Invoices must belong to the same client.');
+
+            const combinedEntries = target.flatMap(i => i.entries);
+            const combinedTotal = target.reduce((s, i) => s + i.total, 0);
+            const merged = { id: 'INV-MERGED-' + Math.floor(1000 + Math.random() * 9000), clientId: firstClientId, entries: combinedEntries, total: combinedTotal, date: new Date().toISOString().split('T')[0], mergedFrom: selectedIds };
+
+            acc.invoices = acc.invoices.filter(i => !selectedIds.includes(i.id));
+            acc.invoices.push(merged);
+            window.saveAccounts();
+            alert('Invoices merged successfully!');
+        };
+
+        function renderInvoices() {
+            const acc = getActiveAccount();
+            const container = document.getElementById('invoices-list');
+            if (!acc || acc.invoices.length === 0) { container.innerHTML = `<p class="text-gray-500 text-sm">No invoices yet.</p>`; return; }
+            container.innerHTML = acc.invoices.map(inv => `<div class="border p-3 rounded flex justify-between items-center"><div class="flex items-center space-x-2"><input type="checkbox" value="${inv.id}" class="merge-inv-checkbox h-4 w-4"><span><strong>${inv.id}</strong> - Total: $${inv.total.toFixed(2)}</span></div></div>`).join('');
+        }
+
+        function renderCatalog() {
+            const acc = getActiveAccount();
+            if (!acc) return;
+            document.getElementById('catalog-list').innerHTML = acc.catalog.map(item => `<li class="py-2 flex justify-between"><span>${item.name}</span><span>~${item.hours} hrs</span></li>`).join('');
+        }
+
+        function renderDashboard() {
+            const acc = getActiveAccount();
+            if (!acc) return;
+            const totalHours = acc.timeLogs.reduce((sum, curr) => sum + curr.hours, 0);
+            const totalBillable = acc.timeLogs.filter(l => l.billable).reduce((sum, curr) => sum + (curr.hours * curr.rate), 0);
+            document.getElementById('stat-total-hours').innerText = totalHours.toFixed(1);
+            document.getElementById('stat-total-billable').innerText = acc.currency + totalBillable.toFixed(2);
+            document.getElementById('stat-active-clients').innerText = acc.clients.length;
+
+            if (clientChartInstance) clientChartInstance.destroy();
+            clientChartInstance = new Chart(document.getElementById('chartClientHours').getContext('2d'), {
+                type: 'bar',
+                data: { labels: acc.clients.map(c => c.name), datasets: [{ label: 'Hours', data: acc.clients.map(c => acc.timeLogs.filter(l => l.clientId === c.id).reduce((s, b) => s + b.hours, 0)), backgroundColor: '#3b82f6' }] }
+            });
+        }
+    </script>
+</head>
+<body class="bg-gray-100 text-gray-900 font-sans">
+    <!-- AUTH MODAL -->
+    <div id="user-auth-modal" class="fixed inset-0 bg-slate-900 bg-opacity-95 flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 space-y-4">
+            <div class="flex justify-around border-b pb-3">
+                <button id="auth-tab-login" onclick="switchAuthTab('login')" class="font-bold text-sm text-blue-600 border-b-2 border-blue-600 pb-1">Sign In</button>
+                <button id="auth-tab-signup" onclick="switchAuthTab('signup')" class="font-bold text-sm text-gray-500 pb-1">Sign Up</button>
+            </div>
+            <button onclick="handleGoogleSignIn()" class="w-full border border-gray-300 hover:bg-gray-50 text-slate-700 font-semibold py-2.5 px-4 rounded-md text-sm flex items-center justify-center space-x-2">
+                <span>Continue with Google</span>
+            </button>
+            <form id="login-form" onsubmit="handleLoginSubmit(event)" class="space-y-3">
+                <input type="email" id="login-email" required placeholder="Email" class="w-full border rounded p-2 text-sm">
+                <input type="password" id="login-password" required placeholder="Password" class="w-full border rounded p-2 text-sm">
+                <button type="submit" class="w-full bg-blue-600 text-white p-2 rounded text-sm font-semibold">Sign In</button>
+            </form>
+            <form id="signup-form" onsubmit="handleSignupSubmit(event)" class="space-y-3 hidden">
+                <input type="email" id="signup-email" required placeholder="Email" class="w-full border rounded p-2 text-sm">
+                <input type="password" id="signup-password" required placeholder="Password (min 6 chars)" class="w-full border rounded p-2 text-sm">
+                <input type="password" id="signup-password-confirm" required placeholder="Confirm Password" class="w-full border rounded p-2 text-sm">
+                <button type="submit" class="w-full bg-green-600 text-white p-2 rounded text-sm font-semibold">Register Account</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- COMPANY REGISTRATION MODAL -->
+    <div id="auth-modal" class="fixed inset-0 bg-slate-900 bg-opacity-95 flex items-center justify-center p-4 z-50 hidden">
+        <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full p-6 space-y-4 relative">
+            <button onclick="closeRegistrationModal()" class="absolute top-4 left-4 text-xs font-semibold text-gray-500">← Back</button>
+            <h2 class="text-xl font-bold text-center pt-2">Register Company Workspace</h2>
+            <form onsubmit="handleRegistration(event)" class="space-y-3">
+                <input type="text" id="reg-company-name" required placeholder="Company Name" class="w-full border rounded p-2 text-sm">
+                <select id="reg-industry" class="w-full border rounded p-2 text-sm">
+                    <option value="Software Development">Software & App Development</option>
+                    <option value="Graphic & UI/UX Design">Graphic, Web & UI/UX Design</option>
+                    <option value="Digital Marketing">Digital Marketing & Growth Agency</option>
+                    <option value="Legal Services">Legal Services & Corporate Law</option>
+                    <option value="Accounting & Tax">Accounting, Audit & Tax Advisory</option>
+                    <option value="HR & Recruitment">Human Resources & Staffing Agency</option>
+                    <option value="Construction & Architecture">Construction & Architecture Firm</option>
+                    <option value="Management & Strategy">Management & Business Strategy</option>
+                    <option value="SAP Consulting">SAP / Enterprise IT Consulting</option>
+                    <option value="General Freelance / Other">General Consulting & Services</option>
+                </select>
+                <select id="reg-currency-select" class="w-full border rounded p-2 text-sm">
+                    <option value="$">USD ($)</option>
+                    <option value="€">EUR (€)</option>
+                    <option value="£">GBP (£)</option>
+                    <option value="₹">INR (₹)</option>
+                </select>
+                <input type="number" id="reg-rate" value="120" class="w-full border rounded p-2 text-sm">
+                <button type="submit" class="w-full bg-blue-600 text-white p-2 rounded text-sm font-semibold">Create Workspace</button>
+            </form>
+            <div id="switch-company-container" class="hidden border-t pt-2 text-center">
+                <select id="existing-companies-select" onchange="switchCompanyAccount(this.value)" class="w-full border rounded p-2 text-xs"></select>
+            </div>
+        </div>
+    </div>
+
+    <!-- APP SHELL -->
+    <div class="min-h-screen flex flex-col">
+        <header class="bg-slate-900 text-white shadow">
+            <div class="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+                <div>
+                    <h1 id="app-brand-title" class="text-xl font-bold">Business Activity Tracker</h1>
+                    <p id="app-brand-subtitle" class="text-xs text-slate-400">Cloud Synced PWA</p>
+                </div>
+                <div class="flex items-center space-x-3">
+                    <span id="logged-user-display" class="text-xs text-slate-300"></span>
+                    <button onclick="openRegistrationModal()" class="bg-slate-800 text-xs px-3 py-1.5 rounded border border-slate-700">🏢 Switch Company</button>
+                    <button onclick="handleLogout()" class="bg-red-800 text-xs px-3 py-1.5 rounded">Logout</button>
+                </div>
+            </div>
+            <div class="max-w-7xl mx-auto px-4 flex space-x-1 overflow-x-auto bg-slate-950 py-1">
+                <button onclick="switchTab('dashboard')" class="tab-btn px-4 py-2 rounded-t font-medium text-sm bg-white text-slate-900">Dashboard</button>
+                <button onclick="switchTab('log-time')" class="tab-btn px-4 py-2 rounded-t font-medium text-sm text-slate-300">Log Time</button>
+                <button onclick="switchTab('projects')" class="tab-btn px-4 py-2 rounded-t font-medium text-sm text-slate-300">Projects & Tasks</button>
+                <button onclick="switchTab('clients')" class="tab-btn px-4 py-2 rounded-t font-medium text-sm text-slate-300">Clients & Currencies</button>
+                <button onclick="switchTab('invoices')" class="tab-btn px-4 py-2 rounded-t font-medium text-sm text-slate-300">Invoices</button>
+                <button onclick="switchTab('catalog')" class="tab-btn px-4 py-2 rounded-t font-medium text-sm text-slate-300">Activity Catalog</button>
+            </div>
+        </header>
+
+        <main class="max-w-7xl mx-auto px-4 py-6 flex-grow w-full space-y-6">
+            <!-- DASHBOARD -->
+            <div id="tab-dashboard" class="tab-content space-y-6">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="bg-white p-4 rounded shadow border-l-4 border-blue-600"><p class="text-sm text-gray-500">Total Hours</p><p id="stat-total-hours" class="text-2xl font-bold">0.0</p></div>
+                    <div class="bg-white p-4 rounded shadow border-l-4 border-green-600"><p class="text-sm text-gray-500">Total Billed</p><p id="stat-total-billable" class="text-2xl font-bold">$0.00</p></div>
+                    <div class="bg-white p-4 rounded shadow border-l-4 border-purple-600"><p class="text-sm text-gray-500">Clients</p><p id="stat-active-clients" class="text-2xl font-bold">0</p></div>
+                </div>
+                <div class="bg-white p-4 rounded shadow"><canvas id="chartClientHours" height="100"></canvas></div>
+            </div>
+
+            <!-- LOG TIME -->
+            <div id="tab-log-time" class="tab-content hidden space-y-6">
+                <div class="bg-white p-6 rounded shadow max-w-2xl">
+                    <h3 class="text-lg font-semibold mb-4">Record Working Hours</h3>
+                    <form onsubmit="handleLogTime(event)" class="space-y-4">
+                        <div class="grid grid-cols-2 gap-4">
+                            <div><label class="block text-sm">Client</label><select id="log-client" onchange="onClientChange()" required class="w-full border rounded p-2 bg-white text-sm"></select></div>
+                            <div><label class="block text-sm">Project</label><select id="log-project" onchange="onProjectChange()" required class="w-full border rounded p-2 bg-white text-sm"></select></div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div><label class="block text-sm">Task</label><select id="log-task" required class="w-full border rounded p-2 bg-white text-sm"></select></div>
+                            <div><label class="block text-sm">Hours</label><input type="number" step="0.25" id="log-hours" required class="w-full border rounded p-2 text-sm"></div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div><label class="block text-sm">Rate (<span id="log-currency-symbol">$</span>)</label><input type="number" id="log-rate" required class="w-full border rounded p-2 text-sm"></div>
+                            <div class="flex items-center pt-5"><label class="flex items-center space-x-2"><input type="checkbox" id="log-billable" checked class="h-4 w-4"><span class="text-sm">Billable</span></label></div>
+                        </div>
+                        <div><label class="block text-sm">Notes</label><textarea id="log-notes" rows="2" class="w-full border rounded p-2 text-sm"></textarea></div>
+                        <button type="submit" class="w-full bg-blue-600 text-white p-2 rounded text-sm font-semibold">Save Time Entry</button>
+                    </form>
+                </div>
+                <div class="bg-white p-6 rounded shadow"><table class="min-w-full text-sm"><tbody id="time-logs-table"></tbody></table></div>
+            </div>
+
+            <!-- PROJECTS & TASKS -->
+            <div id="tab-projects" class="tab-content hidden space-y-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="bg-white p-6 rounded shadow space-y-3">
+                        <h3 class="text-lg font-semibold">Manage Projects</h3>
+                        <form onsubmit="handleAddProject(event)" class="space-y-3">
+                            <input type="text" id="proj-name" placeholder="Project Name" required class="w-full border rounded p-2 text-sm">
+                            <select id="proj-client" required class="w-full border rounded p-2 text-sm bg-white"></select>
+                            <textarea id="proj-desc" placeholder="Project Description" class="w-full border rounded p-2 text-sm"></textarea>
+                            <button type="submit" class="bg-blue-600 text-white text-sm p-2 rounded">Add Project</button>
+                        </form>
+                        <ul id="projects-list" class="space-y-1 text-sm max-h-48 overflow-y-auto"></ul>
+                    </div>
+                    <div class="bg-white p-6 rounded shadow space-y-3">
+                        <h3 class="text-lg font-semibold">Manage Tasks</h3>
+                        <form onsubmit="handleAddTask(event)" class="space-y-3">
+                            <input type="text" id="task-name" placeholder="Task Name" required class="w-full border rounded p-2 text-sm">
+                            <select id="task-project" required class="w-full border rounded p-2 text-sm bg-white"></select>
+                            <input type="number" step="0.5" id="task-est-hrs" placeholder="Estimated Hours" class="w-full border rounded p-2 text-sm">
+                            <button type="submit" class="bg-blue-600 text-white text-sm p-2 rounded">Add Task</button>
+                        </form>
+                        <ul id="tasks-list" class="space-y-1 text-sm max-h-48 overflow-y-auto"></ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CLIENTS -->
+            <div id="tab-clients" class="tab-content hidden space-y-6">
+                <div class="bg-white p-6 rounded shadow max-w-xl space-y-3">
+                    <h3 class="text-lg font-semibold">Add Client</h3>
+                    <form onsubmit="handleAddClient(event)" class="space-y-3">
+                        <input type="text" id="client-name" required placeholder="Client Name" class="w-full border rounded p-2 text-sm">
+                        <select id="client-currency-select" class="w-full border rounded p-2 text-sm bg-white"><option value="$">USD ($)</option><option value="€">EUR (€)</option><option value="£">GBP (£)</option><option value="₹">INR (₹)</option></select>
+                        <input type="number" id="client-rate" required value="120" class="w-full border rounded p-2 text-sm">
+                        <button type="submit" class="bg-blue-600 text-white p-2 rounded text-sm">Save Client</button>
+                    </form>
+                </div>
+                <div class="bg-white p-6 rounded shadow"><div id="clients-grid" class="grid grid-cols-3 gap-4"></div></div>
+            </div>
+
+            <!-- INVOICES -->
+            <div id="tab-invoices" class="tab-content hidden space-y-6">
+                <div class="bg-white p-6 rounded shadow max-w-xl space-y-4">
+                    <h3 class="text-lg font-semibold">Generate Invoice</h3>
+                    <select id="inv-client" onchange="loadUnbilledEntries()" class="w-full border rounded p-2 text-sm bg-white"></select>
+                    <div id="unbilled-container" class="border p-3 rounded bg-gray-50 text-sm">Select a client.</div>
+                    <button onclick="generateInvoice()" class="bg-green-600 text-white p-2 rounded text-sm font-semibold">Create Invoice</button>
+                </div>
+                <div class="bg-white p-6 rounded shadow space-y-3">
+                    <div class="flex justify-between items-center border-b pb-2">
+                        <h3 class="font-semibold">Generated Invoices</h3>
+                        <button onclick="mergeSelectedInvoices()" class="bg-purple-600 text-white text-xs px-3 py-1.5 rounded">Merge Selected Invoices</button>
+                    </div>
+                    <div id="invoices-list" class="space-y-2"></div>
+                </div>
+            </div>
+
+            <!-- CATALOG -->
+            <div id="tab-catalog" class="tab-content hidden space-y-6">
+                <div class="bg-white p-6 rounded shadow max-w-xl space-y-3">
+                    <h3 class="text-lg font-semibold">Activity Catalog</h3>
+                    <form onsubmit="handleAddCatalogItem(event)" class="space-y-3">
+                        <input type="text" id="catalog-new-name" required placeholder="Activity Name" class="w-full border rounded p-2 text-sm">
+                        <input type="number" step="0.5" id="catalog-new-hrs" required placeholder="Estimated Hours" class="w-full border rounded p-2 text-sm">
+                        <button type="submit" class="bg-blue-600 text-white text-sm p-2 rounded">Add Catalog Item</button>
+                    </form>
+                    <ul id="catalog-list" class="divide-y text-sm"></ul>
+                </div>
+            </div>
+        </main>
+    </div>
+</body>
+</html>
