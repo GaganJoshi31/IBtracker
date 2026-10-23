@@ -35,7 +35,7 @@
         let activeCompanyId = null;
         let accounts = {};
 
-        // DYNAMIC GENERATOR (NO HARDCODING - ALGORITHMICALLY SYNTHESIZES TASKS BASED ON INDUSTRY)
+        // DYNAMIC GENERATOR (SYNTHESIZES MULTIPLE PROJECTS AND TASKS ALGORITHMICALLY)
         function generateDynamicPreset(industryName, currency, defaultRate) {
             const cleanName = industryName.trim() || "Professional Services";
             return {
@@ -50,7 +50,9 @@
                 tasks: [
                     { projIdx: 0, name: `Initial Discovery & Requirements Analysis`, estHours: 10 },
                     { projIdx: 0, name: `Execution, Implementation & Testing`, estHours: 25 },
-                    { projIdx: 1, name: `Performance Review & Final Handover`, estHours: 15 }
+                    { projIdx: 0, name: `Quality Assurance & Delivery Handover`, estHours: 12 },
+                    { projIdx: 1, name: `Strategic R&D Audit`, estHours: 8 },
+                    { projIdx: 1, name: `Performance Review & Optimization`, estHours: 15 }
                 ],
                 catalog: [
                     { name: `${cleanName} Discovery Audit`, hours: 8 },
@@ -237,6 +239,18 @@
             event.currentTarget.classList.remove('text-slate-300');
         };
 
+        window.toggleCustomCurrency = function() {
+            const val = document.getElementById('client-currency-select').value;
+            const customInput = document.getElementById('client-currency-custom');
+            if (val === 'custom') {
+                customInput.classList.remove('hidden');
+                customInput.required = true;
+            } else {
+                customInput.classList.add('hidden');
+                customInput.required = false;
+            }
+        };
+
         window.initApp = function() {
             const acc = getActiveAccount();
             if (!acc) return;
@@ -289,7 +303,7 @@
             const selectedProjId = document.getElementById('log-project').value;
             const filteredTasks = acc.tasks.filter(t => t.projectId === selectedProjId);
             const taskSelect = document.getElementById('log-task');
-            taskSelect.innerHTML = filteredTasks.length === 0 ? `<option value="">No tasks</option>` : filteredTasks.map(t => `<option value="${t.id}">${t.name} (${t.estHours} hrs)</option>`).join('');
+            taskSelect.innerHTML = filteredTasks.length === 0 ? `<option value="">No tasks found</option>` : filteredTasks.map(t => `<option value="${t.id}">${t.name} (${t.estHours} hrs)</option>`).join('');
         };
 
         window.handleAddClient = function(e) {
@@ -297,10 +311,14 @@
             const acc = getActiveAccount();
             if (!acc) return;
             const name = document.getElementById('client-name').value;
-            const currency = document.getElementById('client-currency-select').value;
+            let currency = document.getElementById('client-currency-select').value;
+            if (currency === 'custom') {
+                currency = document.getElementById('client-currency-custom').value.trim() || acc.currency;
+            }
             const rate = parseFloat(document.getElementById('client-rate').value);
             acc.clients.push({ id: 'c_' + Date.now(), name, currency, rate });
             document.getElementById('client-name').value = '';
+            document.getElementById('client-currency-custom').value = '';
             window.saveAccounts();
         };
 
@@ -555,12 +573,21 @@
         };
 
         window.downloadTemplate = function(type) {
-            let csv = type === 'catalog' ? "Name,Hours\nDiscovery,10" : type === 'logs' ? "Date,Client,Currency,Project,Task,Hours,Rate,Notes,Invoiced\n2026-10-01,Acme,$,App,Dev,5,120,Notes,No" : "InvoiceID,Client,Currency,Date,TotalAmount\nINV-5001,Acme,$,2026-09-01,500.00";
-            const blob = new Blob([csv], { type: 'text/csv' });
+            let csv = "";
+            if (type === 'catalog') {
+                csv = "Name,Hours\nDiscovery Audit,10\nSystem Implementation,25";
+            } else if (type === 'logs') {
+                csv = "Date,Client,Currency,Project,Task,Hours,Rate,Notes,Invoiced\n2026-10-01,Acme Web Corp,$,Brand Development,Wireframing,5,120,Completed initial layout draft,No";
+            } else if (type === 'invoices') {
+                csv = "InvoiceID,Client,Currency,Date,TotalAmount\nINV-5001,Acme Web Corp,$,2026-09-15,1250.00";
+            }
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement("a");
             link.href = URL.createObjectURL(blob);
             link.setAttribute("download", `${type}_template.csv`);
+            document.body.appendChild(link);
             link.click();
+            document.body.removeChild(link);
         };
 
         function renderDashboard() {
@@ -729,9 +756,22 @@
                     <h3 class="font-semibold mb-3">Add Client</h3>
                     <form onsubmit="handleAddClient(event)" class="space-y-3">
                         <input type="text" id="client-name" required placeholder="Client Name" class="w-full border rounded p-2 text-sm">
-                        <select id="client-currency-select" class="w-full border rounded p-2 text-sm bg-white"><option value="$">USD ($)</option><option value="€">EUR (€)</option><option value="£">GBP (£)</option><option value="₹">INR (₹)</option></select>
+                        <select id="client-currency-select" onchange="toggleCustomCurrency()" class="w-full border rounded p-2 text-sm bg-white">
+                            <option value="$">USD ($)</option>
+                            <option value="€">EUR (€)</option>
+                            <option value="£">GBP (£)</option>
+                            <option value="₹">INR (₹)</option>
+                            <option value="A$">AUD (A$)</option>
+                            <option value="C$">CAD (C$)</option>
+                            <option value="¥">JPY / CNY (¥)</option>
+                            <option value="AED">AED (د.إ)</option>
+                            <option value="CHF">CHF (Fr.)</option>
+                            <option value="SGD">SGD (S$)</option>
+                            <option value="custom">Custom Symbol...</option>
+                        </select>
+                        <input type="text" id="client-currency-custom" placeholder="Type Custom Currency Symbol (e.g. KSh, R$)" class="w-full border rounded p-2 text-sm hidden">
                         <input type="number" id="client-rate" required value="120" class="w-full border rounded p-2 text-sm">
-                        <button type="submit" class="w-full bg-blue-600 text-white p-2 rounded text-sm font-semibold">Save Client</button>
+                        <button type="submit" class="w-full bg-blue-600 text-white p-2 rounded text-sm font-semibold">Save Client Profile</button>
                     </form>
                 </div>
                 <div class="bg-white p-6 rounded shadow"><div id="clients-grid" class="grid grid-cols-1 md:grid-cols-3 gap-4"></div></div>
@@ -767,7 +807,7 @@
                         <input type="file" id="catalog-file-input" accept=".csv, .xlsx" class="block w-full text-xs mb-2">
                         <div class="flex space-x-2">
                             <button onclick="importCatalogFile()" class="bg-slate-800 text-white text-xs px-3 py-1.5 rounded">Upload & Import</button>
-                            <button onclick="downloadTemplate('catalog')" class="bg-gray-200 text-xs px-3 py-1.5 rounded">Template</button>
+                            <button onclick="downloadTemplate('catalog')" class="bg-gray-200 text-xs px-3 py-1.5 rounded">📥 Template</button>
                         </div>
                     </div>
                 </div>
@@ -782,13 +822,19 @@
                         <div class="border p-4 rounded bg-gray-50 space-y-2">
                             <h4 class="font-semibold text-sm">1. Import Time Logs / Past Tasks</h4>
                             <input type="file" id="migrate-logs-file" accept=".csv, .xlsx" class="block w-full text-xs">
-                            <button onclick="importHistoricalLogs()" class="bg-blue-600 text-white text-xs px-3 py-1.5 rounded">Import Logs</button>
+                            <div class="flex space-x-2 pt-1">
+                                <button onclick="importHistoricalLogs()" class="bg-blue-600 text-white text-xs px-3 py-1.5 rounded">Import Logs</button>
+                                <button onclick="downloadTemplate('logs')" class="bg-gray-200 text-xs px-3 py-1.5 rounded">📥 Template</button>
+                            </div>
                         </div>
                         <div class="border p-4 rounded bg-gray-50 space-y-2">
                             <h4 class="font-semibold text-sm">2. Import Past Invoices</h4>
                             <p class="text-xs text-gray-500">Columns: InvoiceID, Client, Currency, Date, TotalAmount</p>
                             <input type="file" id="migrate-invoices-file" accept=".csv, .xlsx" class="block w-full text-xs">
-                            <button onclick="importPastInvoices()" class="bg-green-600 text-white text-xs px-3 py-1.5 rounded">Import Invoices</button>
+                            <div class="flex space-x-2 pt-1">
+                                <button onclick="importPastInvoices()" class="bg-green-600 text-white text-xs px-3 py-1.5 rounded">Import Invoices</button>
+                                <button onclick="downloadTemplate('invoices')" class="bg-gray-200 text-xs px-3 py-1.5 rounded">📥 Template</button>
+                            </div>
                         </div>
                     </div>
                 </div>
