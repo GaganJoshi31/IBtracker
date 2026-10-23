@@ -17,7 +17,7 @@
 
         // TODO: Replace with your actual Firebase project configuration
         const firebaseConfig = {
-           apiKey: "AIzaSyCuDLY1mBtvaG0vIz6AJNBNOesAg66nlHI",
+            apiKey: "AIzaSyCuDLY1mBtvaG0vIz6AJNBNOesAg66nlHI",
   authDomain: "ibtracker-84c57.firebaseapp.com",
   projectId: "ibtracker-84c57",
   storageBucket: "ibtracker-84c57.firebasestorage.app",
@@ -35,7 +35,7 @@
         let activeCompanyId = null;
         let accounts = {};
 
-        // DYNAMIC GENERATOR (SYNTHESIZES MULTIPLE PROJECTS AND TASKS ALGORITHMICALLY)
+        // DYNAMIC GENERATOR (PRODUCES A RICH SUITE OF TASKS ACROSS ALL PROJECTS)
         function generateDynamicPreset(industryName, currency, defaultRate) {
             const cleanName = industryName.trim() || "Professional Services";
             return {
@@ -48,11 +48,13 @@
                     { name: `Strategic R&D & Optimization`, desc: `Advanced consulting and R&D phase` }
                 ],
                 tasks: [
-                    { projIdx: 0, name: `Initial Discovery & Requirements Analysis`, estHours: 10 },
-                    { projIdx: 0, name: `Execution, Implementation & Testing`, estHours: 25 },
-                    { projIdx: 0, name: `Quality Assurance & Delivery Handover`, estHours: 12 },
-                    { projIdx: 1, name: `Strategic R&D Audit`, estHours: 8 },
-                    { projIdx: 1, name: `Performance Review & Optimization`, estHours: 15 }
+                    { projIdx: 0, name: `Discovery & Requirements Audit`, estHours: 10 },
+                    { projIdx: 0, name: `System Architecture & Workflow Blueprint`, estHours: 16 },
+                    { projIdx: 0, name: `Core Implementation & Module Assembly`, estHours: 30 },
+                    { projIdx: 0, name: `Quality Assurance & Integration Testing`, estHours: 12 },
+                    { projIdx: 0, name: `Final Deployment & Client Handover`, estHours: 8 },
+                    { projIdx: 1, name: `Performance Analysis & Benchmarking`, estHours: 14 },
+                    { projIdx: 1, name: `Strategic Optimization & Scalability Review`, estHours: 18 }
                 ],
                 catalog: [
                     { name: `${cleanName} Discovery Audit`, hours: 8 },
@@ -348,6 +350,46 @@
             window.saveAccounts();
         };
 
+        // ONE-CLICK QUICK TASK SUITE GENERATOR FOR EXISTING COMPANIES
+        window.autoGenerateTasksForProjects = function() {
+            const acc = getActiveAccount();
+            if (!acc || acc.projects.length === 0) return alert('Please create at least one project first.');
+            
+            const taskTemplates = [
+                { name: "Requirements Gathering & Discovery Audit", estHours: 8 },
+                { name: "Technical Architecture & System Blueprinting", estHours: 14 },
+                { name: "Core Module Implementation & Development", estHours: 24 },
+                { name: "Quality Assurance, Security & Refactoring", estHours: 12 },
+                { name: "Deployment Setup & Production Handover", estHours: 6 }
+            ];
+
+            let addedCount = 0;
+            acc.projects.forEach(p => {
+                taskTemplates.forEach(template => {
+                    const exists = acc.tasks.some(t => t.projectId === p.id && t.name.toLowerCase() === template.name.toLowerCase());
+                    if (!exists) {
+                        acc.tasks.push({
+                            id: 't_' + Date.now() + Math.random(),
+                            projectId: p.id,
+                            name: template.name,
+                            estHours: template.estHours
+                        });
+                        addedCount++;
+                    }
+                });
+            });
+
+            window.saveAccounts();
+            alert(`Generated ${addedCount} standard tasks across your projects!`);
+        };
+
+        window.deleteTask = function(taskId) {
+            const acc = getActiveAccount();
+            if (!acc) return;
+            acc.tasks = acc.tasks.filter(t => t.id !== taskId);
+            window.saveAccounts();
+        };
+
         window.handleAddCatalogItem = function(e) {
             e.preventDefault();
             const acc = getActiveAccount();
@@ -406,13 +448,16 @@
         function renderProjectsAndTasks() {
             const acc = getActiveAccount();
             if (!acc) return;
-            document.getElementById('projects-list').innerHTML = acc.projects.map(p => {
+            
+            document.getElementById('projects-list').innerHTML = acc.projects.length === 0 ? `<li class="text-gray-500 text-xs py-2">No projects created yet.</li>` : acc.projects.map(p => {
                 const c = acc.clients.find(x => x.id === p.clientId)?.name || 'Client';
-                return `<li class="border-b pb-1"><strong>${p.name}</strong> <span class="text-gray-500">(${c})</span></li>`;
+                const taskCount = acc.tasks.filter(t => t.projectId === p.id).length;
+                return `<li class="border-b py-1.5 flex justify-between items-center text-xs"><span><strong>${p.name}</strong> <span class="text-gray-500">(${c})</span></span><span class="bg-gray-100 text-gray-700 px-2 py-0.5 rounded font-semibold">${taskCount} tasks</span></li>`;
             }).join('');
-            document.getElementById('tasks-list').innerHTML = acc.tasks.map(t => {
+
+            document.getElementById('tasks-list').innerHTML = acc.tasks.length === 0 ? `<li class="text-gray-500 text-xs py-2">No tasks generated yet. Click "Auto-Generate Task Suite" above!</li>` : acc.tasks.map(t => {
                 const pr = acc.projects.find(x => x.id === t.projectId)?.name || 'Project';
-                return `<li class="border-b pb-1"><strong>${t.name}</strong> <span class="text-gray-500">[${pr}] (~${t.estHours}h)</span></li>`;
+                return `<li class="border-b py-1.5 flex justify-between items-center text-xs"><span><strong>${t.name}</strong> <span class="text-gray-500">[${pr}] (~${t.estHours}h)</span></span><button onclick="deleteTask('${t.id}')" class="text-red-600 hover:underline ml-2">Delete</button></li>`;
             }).join('');
         }
 
@@ -724,8 +769,15 @@
                 <div class="bg-white p-6 rounded shadow"><table class="w-full text-sm"><tbody id="time-logs-table"></tbody></table></div>
             </div>
 
-            <!-- PROJECTS TAB -->
+            <!-- PROJECTS & TASKS TAB -->
             <div id="tab-projects" class="tab-content hidden space-y-6">
+                <div class="bg-blue-50 border border-blue-200 p-4 rounded-lg flex justify-between items-center">
+                    <div>
+                        <h4 class="font-bold text-blue-900 text-sm">Need Default Tasks For Existing Projects?</h4>
+                        <p class="text-xs text-blue-700">Click to automatically populate standard industry tasks into your current project workspace.</p>
+                    </div>
+                    <button onclick="autoGenerateTasksForProjects()" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs px-3 py-2 rounded transition">⚡ Auto-Generate Task Suite</button>
+                </div>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div class="bg-white p-6 rounded shadow">
                         <h3 class="font-semibold mb-3">Projects</h3>
@@ -733,7 +785,7 @@
                             <input type="text" id="proj-name" required placeholder="Project Name" class="w-full border rounded p-2 text-sm">
                             <select id="proj-client" required class="w-full border rounded p-2 text-sm bg-white"></select>
                             <textarea id="proj-desc" placeholder="Description" class="w-full border rounded p-2 text-sm"></textarea>
-                            <button type="submit" class="bg-blue-600 text-white text-xs px-3 py-2 rounded">Add Project</button>
+                            <button type="submit" class="bg-blue-600 text-white text-xs px-3 py-2 rounded font-semibold">Add Project</button>
                         </form>
                         <ul id="projects-list" class="space-y-1 text-sm"></ul>
                     </div>
@@ -743,7 +795,7 @@
                             <input type="text" id="task-name" required placeholder="Task / Activity Name" class="w-full border rounded p-2 text-sm">
                             <select id="task-project" required class="w-full border rounded p-2 text-sm bg-white"></select>
                             <input type="number" step="0.5" id="task-est-hrs" placeholder="Est Hours" class="w-full border rounded p-2 text-sm">
-                            <button type="submit" class="bg-blue-600 text-white text-xs px-3 py-2 rounded">Add Task / Activity</button>
+                            <button type="submit" class="bg-blue-600 text-white text-xs px-3 py-2 rounded font-semibold">Add Task / Activity</button>
                         </form>
                         <ul id="tasks-list" class="space-y-1 text-sm"></ul>
                     </div>
