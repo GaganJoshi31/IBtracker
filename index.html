@@ -17,13 +17,13 @@
 
         // TODO: Replace with your actual Firebase project configuration
         const firebaseConfig = {
-            apiKey: "AIzaSyCuDLY1mBtvaG0vIz6AJNBNOesAg66nlHI",
-  authDomain: "ibtracker-84c57.firebaseapp.com",
-  projectId: "ibtracker-84c57",
-  storageBucket: "ibtracker-84c57.firebasestorage.app",
-  messagingSenderId: "765743778554",
-  appId: "1:765743778554:web:ae5bab4a7105def74fd743",
-  measurementId: "G-TYWEXKH79S"
+           apiKey: "AIzaSyCuDLY1mBtvaG0vIz6AJNBNOesAg66nlHI",
+          authDomain: "ibtracker-84c57.firebaseapp.com",
+          projectId: "ibtracker-84c57",
+          storageBucket: "ibtracker-84c57.firebasestorage.app",
+          messagingSenderId: "765743778554",
+          appId: "1:765743778554:web:ae5bab4a7105def74fd743",
+          measurementId: "G-TYWEXKH79S"
         };
 
         const app = initializeApp(firebaseConfig);
@@ -35,7 +35,6 @@
         let activeCompanyId = null;
         let accounts = {};
 
-        // DYNAMIC GENERATOR (PRODUCES A RICH SUITE OF TASKS ACROSS ALL PROJECTS)
         function generateDynamicPreset(industryName, currency, defaultRate) {
             const cleanName = industryName.trim() || "Professional Services";
             return {
@@ -292,6 +291,10 @@
                 onProjectChange();
             }
             document.getElementById('task-project').innerHTML = acc.projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+            
+            // Render filter dropdown in tasks tab
+            document.getElementById('task-filter-project').innerHTML = `<option value="ALL">Show Tasks From All Projects</option>` + acc.projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+
             const client = acc.clients.find(c => c.id === selectedClientId);
             if (client) {
                 document.getElementById('log-rate').value = client.rate;
@@ -350,7 +353,6 @@
             window.saveAccounts();
         };
 
-        // ONE-CLICK QUICK TASK SUITE GENERATOR FOR EXISTING COMPANIES
         window.autoGenerateTasksForProjects = function() {
             const acc = getActiveAccount();
             if (!acc || acc.projects.length === 0) return alert('Please create at least one project first.');
@@ -388,6 +390,10 @@
             if (!acc) return;
             acc.tasks = acc.tasks.filter(t => t.id !== taskId);
             window.saveAccounts();
+        };
+
+        window.filterTaskList = function() {
+            renderProjectsAndTasks();
         };
 
         window.handleAddCatalogItem = function(e) {
@@ -452,13 +458,37 @@
             document.getElementById('projects-list').innerHTML = acc.projects.length === 0 ? `<li class="text-gray-500 text-xs py-2">No projects created yet.</li>` : acc.projects.map(p => {
                 const c = acc.clients.find(x => x.id === p.clientId)?.name || 'Client';
                 const taskCount = acc.tasks.filter(t => t.projectId === p.id).length;
-                return `<li class="border-b py-1.5 flex justify-between items-center text-xs"><span><strong>${p.name}</strong> <span class="text-gray-500">(${c})</span></span><span class="bg-gray-100 text-gray-700 px-2 py-0.5 rounded font-semibold">${taskCount} tasks</span></li>`;
+                return `<li class="border-b py-2 flex justify-between items-center text-xs"><span><strong>${p.name}</strong> <span class="text-gray-500">(${c})</span></span><span class="bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-semibold">${taskCount} tasks</span></li>`;
             }).join('');
 
-            document.getElementById('tasks-list').innerHTML = acc.tasks.length === 0 ? `<li class="text-gray-500 text-xs py-2">No tasks generated yet. Click "Auto-Generate Task Suite" above!</li>` : acc.tasks.map(t => {
-                const pr = acc.projects.find(x => x.id === t.projectId)?.name || 'Project';
-                return `<li class="border-b py-1.5 flex justify-between items-center text-xs"><span><strong>${t.name}</strong> <span class="text-gray-500">[${pr}] (~${t.estHours}h)</span></span><button onclick="deleteTask('${t.id}')" class="text-red-600 hover:underline ml-2">Delete</button></li>`;
-            }).join('');
+            const selectedFilter = document.getElementById('task-filter-project')?.value || 'ALL';
+            const displayTasks = selectedFilter === 'ALL' ? acc.tasks : acc.tasks.filter(t => t.projectId === selectedFilter);
+
+            document.getElementById('tasks-list-container').innerHTML = displayTasks.length === 0 ? `<div class="text-gray-500 text-xs py-4 text-center">No tasks match this filter.</div>` : `
+                <table class="w-full text-left text-xs border-collapse">
+                    <thead>
+                        <tr class="border-b bg-gray-50 text-gray-600">
+                            <th class="py-2 px-2">Task Name</th>
+                            <th class="py-2 px-2">Belongs To Project</th>
+                            <th class="py-2 px-2">Est. Hours</th>
+                            <th class="py-2 px-2 text-right">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y">
+                        ${displayTasks.map(t => {
+                            const pr = acc.projects.find(x => x.id === t.projectId)?.name || 'Project';
+                            return `
+                                <tr>
+                                    <td class="py-2 px-2 font-medium">${t.name}</td>
+                                    <td class="py-2 px-2 text-gray-500">${pr}</td>
+                                    <td class="py-2 px-2">${t.estHours} hrs</td>
+                                    <td class="py-2 px-2 text-right"><button onclick="deleteTask('${t.id}')" class="text-red-600 hover:underline">Delete</button></td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            `;
         }
 
         function renderClients() {
@@ -780,7 +810,7 @@
                 </div>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div class="bg-white p-6 rounded shadow">
-                        <h3 class="font-semibold mb-3">Projects</h3>
+                        <h3 class="font-semibold mb-3">Add / View Projects</h3>
                         <form onsubmit="handleAddProject(event)" class="space-y-2 mb-4">
                             <input type="text" id="proj-name" required placeholder="Project Name" class="w-full border rounded p-2 text-sm">
                             <select id="proj-client" required class="w-full border rounded p-2 text-sm bg-white"></select>
@@ -789,15 +819,28 @@
                         </form>
                         <ul id="projects-list" class="space-y-1 text-sm"></ul>
                     </div>
-                    <div class="bg-white p-6 rounded shadow">
-                        <h3 class="font-semibold mb-3">Tasks / Past Activities</h3>
-                        <form onsubmit="handleAddTask(event)" class="space-y-2 mb-4">
-                            <input type="text" id="task-name" required placeholder="Task / Activity Name" class="w-full border rounded p-2 text-sm">
-                            <select id="task-project" required class="w-full border rounded p-2 text-sm bg-white"></select>
-                            <input type="number" step="0.5" id="task-est-hrs" placeholder="Est Hours" class="w-full border rounded p-2 text-sm">
-                            <button type="submit" class="bg-blue-600 text-white text-xs px-3 py-2 rounded font-semibold">Add Task / Activity</button>
-                        </form>
-                        <ul id="tasks-list" class="space-y-1 text-sm"></ul>
+                    <div class="bg-white p-6 rounded shadow space-y-4">
+                        <div>
+                            <h3 class="font-semibold mb-1">Add New Task</h3>
+                            <p class="text-xs text-gray-500 mb-3">Choose which project this task belongs to:</p>
+                            <form onsubmit="handleAddTask(event)" class="space-y-2">
+                                <input type="text" id="task-name" required placeholder="Task / Activity Name" class="w-full border rounded p-2 text-sm">
+                                <div class="space-y-1">
+                                    <label class="text-xs text-gray-600 font-semibold">Target Project:</label>
+                                    <select id="task-project" required class="w-full border rounded p-2 text-sm bg-white border-blue-500"></select>
+                                </div>
+                                <input type="number" step="0.5" id="task-est-hrs" placeholder="Est Hours" class="w-full border rounded p-2 text-sm">
+                                <button type="submit" class="bg-blue-600 text-white text-xs px-3 py-2 rounded font-semibold">Add Task / Activity</button>
+                            </form>
+                        </div>
+                        
+                        <div class="border-t pt-4">
+                            <div class="flex justify-between items-center mb-2">
+                                <h3 class="font-semibold text-sm">All Tasks / Activities</h3>
+                                <select id="task-filter-project" onchange="filterTaskList()" class="border text-xs rounded p-1 bg-white"></select>
+                            </div>
+                            <div id="tasks-list-container"></div>
+                        </div>
                     </div>
                 </div>
             </div>
